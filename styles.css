@@ -93,30 +93,55 @@ body {
   background: rgba(30, 33, 58, 0.7);
   border: 1px solid rgba(99, 120, 255, 0.12);
   border-radius: 10px;
-  padding: 1rem 1.1rem;
+  padding: 1.5rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
 }
 
 /* Override Observable Inputs styling */
-.observablehq form {
-  display: flex;
-  flex-direction: column;
-  gap: 1.1rem;
+.observablehq {
+  width: 100%;
 }
 
+.observablehq form,
 .observablehq label {
+  display: grid !important;
+  grid-template-columns: 1fr auto !important;
+  align-items: center !important;
+  width: 100% !important;
+  row-gap: 0.6rem !important;
+  column-gap: 0.8rem !important;
+}
+
+.observablehq form {
+  margin: 0 !important;
+}
+
+.observablehq label,
+.observablehq form > div:first-child,
+.observablehq form > span:first-child {
+  grid-row: 1 !important;
+  grid-column: 1 / -1 !important;
   font-size: 0.78rem !important;
   font-weight: 500 !important;
   color: #a0aec0 !important;
   font-family: 'Inter', sans-serif !important;
+  margin: 0 !important;
 }
 
 .observablehq input[type=range] {
+  grid-row: 2 !important;
+  grid-column: 1 !important;
   accent-color: #6478ff;
-  width: 100%;
+  width: 100% !important;
   cursor: pointer;
+  margin: 0 !important;
 }
 
 .observablehq input[type=number] {
+  grid-row: 2 !important;
+  grid-column: 2 !important;
   font-size: 0.75rem !important;
   color: #a5b4fc !important;
   font-weight: 600 !important;
@@ -147,6 +172,8 @@ body {
 }
 
 .observablehq output {
+  grid-row: 2 !important;
+  grid-column: 2 !important;
   font-size: 0.75rem !important;
   color: #a5b4fc !important;
   font-weight: 600 !important;
