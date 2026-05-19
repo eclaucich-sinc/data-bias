@@ -1,0 +1,309 @@
+---
+title: "Bias Data Playground"
+format:
+  html:
+    page-layout: custom
+    css: styles.css
+execute:
+  echo: false
+---
+
+```{python}
+#| label: python-data-generation
+import numpy as np
+
+np.random.seed(42)
+MAX_POINTS = 2000
+
+def make_pool(group, cls):
+    return [{"id": f"{group}_{cls}_{i}", "group": group, "class": cls,
+             "base_x": float(np.random.normal(0, 1)),
+             "base_y": float(np.random.normal(0, 1))}
+            for i in range(MAX_POINTS)]
+
+data_male_neg = make_pool("Male", "Negative")
+data_male_pos = make_pool("Male", "Positive")
+data_female_neg = make_pool("Female", "Negative")
+data_female_pos = make_pool("Female", "Positive")
+
+ojs_define(
+    male_neg_pool=data_male_neg,
+    male_pos_pool=data_male_pos,
+    female_neg_pool=data_female_neg,
+    female_pos_pool=data_female_pos
+)
+```
+
+```{ojs}
+//| label: playground-ui
+
+d3 = require("d3@7")
+
+// ── Layout shell ──────────────────────────────────────────────────────────────
+layout = {
+  const root = document.createElement("div");
+  root.id = "playground-layout";
+
+  // ── SIDEBAR ────────────────────────────────────────────────────────────────
+  const sidebar = document.createElement("div");
+  sidebar.id = "sidebar";
+
+  // Legend section
+  const legendSection = document.createElement("div");
+  legendSection.innerHTML = `
+    <p class="sidebar-section-title">Legend</p>
+    <div class="legend-card">
+      <div class="legend-grid">
+        <div class="legend-item">
+          <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#d62728"/></svg> Male Negative
+        </div>
+        <div class="legend-item">
+          <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#1f77b4"/></svg> Male Positive
+        </div>
+        <div class="legend-item">
+          <svg width="12" height="12"><path d="M2,2 L10,10 M10,2 L2,10" stroke="#d62728" stroke-width="2.5"/></svg> Female Negative
+        </div>
+        <div class="legend-item">
+          <svg width="12" height="12"><path d="M2,2 L10,10 M10,2 L2,10" stroke="#1f77b4" stroke-width="2.5"/></svg> Female Positive
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Controls section
+  const controlsSection = document.createElement("div");
+  const controlsTitle = document.createElement("p");
+  controlsTitle.className = "sidebar-section-title";
+  controlsTitle.textContent = "Parameters";
+
+  const controlsCard = document.createElement("div");
+  controlsCard.className = "controls-card";
+  controlsCard.append(
+    viewof_total_samples,
+    viewof_class_separation,
+    viewof_group_disparity,
+    viewof_positive_ratio,
+    viewof_minority_ratio,
+    viewof_noise_male_pos,
+    viewof_noise_male_neg,
+    viewof_noise_female_pos,
+    viewof_noise_female_neg
+  );
+
+  controlsSection.append(controlsTitle, controlsCard);
+  sidebar.append(legendSection, controlsSection);
+
+  // ── CHART AREA ─────────────────────────────────────────────────────────────
+  const chartArea = document.createElement("div");
+  chartArea.id = "chart-area";
+
+  const chartHeader = document.createElement("div");
+  chartHeader.className = "chart-header";
+  chartHeader.innerHTML = `
+    <p class="chart-title">Scatter Distribution</p>
+    <p class="chart-subtitle">Adjust parameters on the left to explore group dynamics</p>
+  `;
+
+  const statsBar = document.createElement("div");
+  statsBar.className = "stats-bar";
+  statsBar.id = "stats-bar";
+
+  const chartContainer = document.createElement("div");
+  chartContainer.className = "chart-container";
+  chartContainer.id = "chart-container";
+
+  chartArea.append(chartHeader, statsBar, chartContainer);
+
+  root.append(sidebar, chartArea);
+  return root;
+}
+
+// ── Inputs (hidden – we mount them manually above) ───────────────────────────
+viewof_total_samples  = Inputs.range([100, 2000], {value: 500,  step: 50,   label: "Total Samples"})
+viewof_class_separation = Inputs.range([0, 6],    {value: 3,    step: 0.1,  label: "Class Separation (Y)"})
+viewof_group_disparity  = Inputs.range([0, 6],    {value: 3,    step: 0.1,  label: "Group Separation (X)"})
+viewof_positive_ratio = Inputs.range([0.05, 0.95],{value: 0.5,  step: 0.05, label: "Positive Ratio"})
+viewof_minority_ratio = Inputs.range([0.05, 0.95],{value: 0.5,  step: 0.05, label: "Female Ratio"})
+
+viewof_noise_male_pos = Inputs.range([0, 1], {value: 0, step: 0.01, label: "Noise (Male Positive)"})
+viewof_noise_male_neg = Inputs.range([0, 1], {value: 0, step: 0.01, label: "Noise (Male Negative)"})
+viewof_noise_female_pos = Inputs.range([0, 1], {value: 0, step: 0.01, label: "Noise (Female Positive)"})
+viewof_noise_female_neg = Inputs.range([0, 1], {value: 0, step: 0.01, label: "Noise (Female Negative)"})
+
+total_samples     = Generators.input(viewof_total_samples)
+class_separation  = Generators.input(viewof_class_separation)
+group_disparity   = Generators.input(viewof_group_disparity)
+positive_ratio    = Generators.input(viewof_positive_ratio)
+minority_ratio    = Generators.input(viewof_minority_ratio)
+noise_male_pos    = Generators.input(viewof_noise_male_pos)
+noise_male_neg    = Generators.input(viewof_noise_male_neg)
+noise_female_pos  = Generators.input(viewof_noise_female_pos)
+noise_female_neg  = Generators.input(viewof_noise_female_neg)
+```
+
+```{ojs}
+//| label: reactive-data
+active_data = {
+  const n_female = Math.floor(total_samples * minority_ratio);
+  const n_male = total_samples - n_female;
+  const n_female_pos = Math.floor(n_female * positive_ratio);
+  const n_female_neg = n_female - n_female_pos;
+  const n_male_pos = Math.floor(n_male * positive_ratio);
+  const n_male_neg = n_male - n_male_pos;
+
+  const applyNoise = (data, count, originalClass, flippedClass, noiseRatio) => {
+    const nFlipped = Math.floor(count * noiseRatio);
+    return data.slice(0, count).map((d, i) => ({
+      ...d,
+      original_class: originalClass,
+      class: i < nFlipped ? flippedClass : originalClass,
+      is_noise: i < nFlipped // Let's also track if a point was flipped just in case you need it later
+    }));
+  };
+
+  return [
+    ...applyNoise(male_neg_pool, n_male_neg, "Negative", "Positive", noise_male_neg),
+    ...applyNoise(male_pos_pool, n_male_pos, "Positive", "Negative", noise_male_pos),
+    ...applyNoise(female_neg_pool, n_female_neg, "Negative", "Positive", noise_female_neg),
+    ...applyNoise(female_pos_pool, n_female_pos, "Positive", "Negative", noise_female_pos)
+  ];
+}
+```
+
+```{ojs}
+//| label: chart-render
+chart = {
+  // Dimensions
+  const container = document.getElementById("chart-container");
+  const W = Math.max((container?.clientWidth || 700) - 40, 400);
+  const H = Math.max((container?.clientHeight || 480) - 40, 380);
+  const margin = {top: 24, right: 24, bottom: 48, left: 52};
+  const innerW = W - margin.left - margin.right;
+  const innerH = H - margin.top - margin.bottom;
+
+  // Color map
+  const getColor = d => d.class === "Positive" ? "#1f77b4" : "#d62728";
+
+  const symbolGenerator = d3.symbol();
+
+  const getPath = (d, size) => {
+    symbolGenerator.type(d.group === "Male" ? d3.symbolCircle : d3.symbolCross).size(size);
+    return symbolGenerator();
+  };
+
+  // Scales
+  const xScale = d3.scaleLinear().domain([-4, 10]).range([0, innerW]);
+  const yScale = d3.scaleLinear().domain([-4, 10]).range([innerH, 0]);
+
+  // Build/reuse SVG
+  let svg = d3.select("#chart-container svg");
+  if (svg.empty()) {
+    svg = d3.select("#chart-container")
+      .append("svg")
+      .attr("width", W)
+      .attr("height", H)
+      .style("display", "block");
+  } else {
+    svg.attr("width", W).attr("height", H);
+  }
+
+  let g = svg.select("g.inner");
+  if (g.empty()) {
+    g = svg.append("g").attr("class", "inner")
+      .attr("transform", `translate(${margin.left},${margin.top})`);
+  }
+
+  // Grid lines
+  let gridGroup = g.select(".grid");
+  if (gridGroup.empty()) gridGroup = g.append("g").attr("class", "grid");
+  gridGroup.selectAll(".grid-h")
+    .data(yScale.ticks(6))
+    .join("line").attr("class","grid-h")
+    .attr("x1", 0).attr("x2", innerW)
+    .attr("y1", d => yScale(d)).attr("y2", d => yScale(d))
+    .attr("stroke", "rgba(255,255,255,0.05)").attr("stroke-width", 1);
+  gridGroup.selectAll(".grid-v")
+    .data(xScale.ticks(6))
+    .join("line").attr("class","grid-v")
+    .attr("x1", d => xScale(d)).attr("x2", d => xScale(d))
+    .attr("y1", 0).attr("y2", innerH)
+    .attr("stroke", "rgba(255,255,255,0.05)").attr("stroke-width", 1);
+
+  // Axes
+  let xAxisG = g.select(".x-axis");
+  if (xAxisG.empty()) xAxisG = g.append("g").attr("class","x-axis");
+  xAxisG.attr("transform", `translate(0,${innerH})`)
+    .call(d3.axisBottom(xScale).ticks(6).tickSize(4))
+    .call(ax => {
+      ax.select(".domain").attr("stroke","rgba(255,255,255,0.15)");
+      ax.selectAll("text").attr("fill","#64748b").attr("font-size","11px").attr("font-family","Inter,sans-serif");
+      ax.selectAll(".tick line").attr("stroke","rgba(255,255,255,0.1)");
+    });
+
+  let yAxisG = g.select(".y-axis");
+  if (yAxisG.empty()) yAxisG = g.append("g").attr("class","y-axis");
+  yAxisG.call(d3.axisLeft(yScale).ticks(6).tickSize(4))
+    .call(ax => {
+      ax.select(".domain").attr("stroke","rgba(255,255,255,0.15)");
+      ax.selectAll("text").attr("fill","#64748b").attr("font-size","11px").attr("font-family","Inter,sans-serif");
+      ax.selectAll(".tick line").attr("stroke","rgba(255,255,255,0.1)");
+    });
+
+  // Axis labels
+  let xLabel = g.select(".x-label");
+  if (xLabel.empty()) {
+    g.append("text").attr("class","x-label")
+      .attr("x", innerW / 2).attr("y", innerH + 40)
+      .attr("text-anchor","middle").attr("fill","#475569")
+      .attr("font-size","11px").attr("font-family","Inter,sans-serif")
+      .text("Feature X  (Group Disparity axis)");
+  }
+  let yLabel = g.select(".y-label");
+  if (yLabel.empty()) {
+    g.append("text").attr("class","y-label")
+      .attr("transform","rotate(-90)")
+      .attr("x", -innerH / 2).attr("y", -40)
+      .attr("text-anchor","middle").attr("fill","#475569")
+      .attr("font-size","11px").attr("font-family","Inter,sans-serif")
+      .text("Feature Y  (Class Separation axis)");
+  }
+
+  // Points
+  const getX = d => xScale(d.base_x + (d.group === "Female" ? group_disparity : 0));
+  const getY = d => yScale(d.base_y + (d.original_class === "Positive" ? class_separation : 0));
+
+  g.selectAll("path.point")
+    .data(active_data, d => d.id)
+    .join(
+      enter => enter.append("path")
+        .attr("class", "point")
+        .attr("transform", d => `translate(${getX(d)},${getY(d)})`)
+        .attr("d", d => getPath(d, 0))
+        .attr("fill", getColor).attr("opacity", 0)
+        .call(e => e.transition().duration(450)
+          .attr("d", d => getPath(d, 60)).attr("opacity", 0.72)),
+      update => update.call(u => u.transition().duration(450)
+        .attr("transform", d => `translate(${getX(d)},${getY(d)})`)
+        .attr("d", d => getPath(d, 60))
+        .attr("fill", getColor).attr("opacity", 0.72)),
+      exit => exit.call(x => x.transition().duration(280)
+        .attr("d", d => getPath(d, 0)).attr("opacity", 0).remove())
+    );
+
+  // Update stats bar
+  const statsBar = document.getElementById("stats-bar");
+  if (statsBar) {
+    const nMin = active_data.filter(d => d.group === "Female").length;
+    const nMaj = active_data.filter(d => d.group === "Male").length;
+    const nPos = active_data.filter(d => d.class === "Positive").length;
+    statsBar.innerHTML = `
+      <div class="stat-pill">Total <strong>${active_data.length}</strong></div>
+      <div class="stat-pill">Male <strong>${nMaj}</strong></div>
+      <div class="stat-pill">Female <strong>${nMin}</strong></div>
+      <div class="stat-pill">Positive <strong>${nPos}</strong></div>
+    `;
+  }
+
+  return null;
+}
+```
