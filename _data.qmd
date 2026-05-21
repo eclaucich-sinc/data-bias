@@ -1,0 +1,82 @@
+```{python}
+#| label: python-data-generation
+import numpy as np
+
+np.random.seed(42)
+MAX_POINTS = 2000
+
+def make_pool(group, cls):
+    return [{"id": f"{group}_{cls}_{i}", "group": group, "class": cls,
+             "base_x": float(np.random.normal(0, 1)),
+             "base_y": float(np.random.normal(0, 1))}
+            for i in range(MAX_POINTS)]
+
+data_male_neg = make_pool("Male", "Negative")
+data_male_pos = make_pool("Male", "Positive")
+data_female_neg = make_pool("Female", "Negative")
+data_female_pos = make_pool("Female", "Positive")
+
+ojs_define(
+    male_neg_pool=data_male_neg,
+    male_pos_pool=data_male_pos,
+    female_neg_pool=data_female_neg,
+    female_pos_pool=data_female_pos
+)
+```
+
+
+```{ojs}
+//| label: transform-point
+transformPoint = (bx, by, p) => {
+  const nx = p.std_x * bx;
+  const ny = p.corr * p.std_y * bx + p.std_y * Math.sqrt(1 - p.corr * p.corr) * by;
+  return [nx, ny];
+}
+```
+
+
+```{ojs}
+//| label: reactive-data
+active_data = {
+  const n_female = Math.floor(total_samples * minority_ratio);
+  const n_male = total_samples - n_female;
+  const n_female_pos = Math.floor(n_female * positive_ratio);
+  const n_female_neg = n_female - n_female_pos;
+  const n_male_pos = Math.floor(n_male * positive_ratio);
+  const n_male_neg = n_male - n_male_pos;
+
+  const applyNoise = (data, count, originalClass, flippedClass, noiseRatio) => {
+    const nFlipped = Math.floor(count * noiseRatio);
+    return data.slice(0, count).map((d, i) => ({
+      ...d,
+      original_class: originalClass,
+      class: i < nFlipped ? flippedClass : originalClass,
+      is_noise: i < nFlipped // Let's also track if a point was flipped just in case you need it later
+    }));
+  };
+
+  return [
+    ...applyNoise(male_neg_pool, n_male_neg, "Negative", "Positive", params_mn.noise),
+    ...applyNoise(male_pos_pool, n_male_pos, "Positive", "Negative", params_mp.noise),
+    ...applyNoise(female_neg_pool, n_female_neg, "Negative", "Positive", params_fn.noise),
+    ...applyNoise(female_pos_pool, n_female_pos, "Positive", "Negative", params_fp.noise)
+  ];
+}
+```
+
+
+```{ojs}
+//| label: test-pool-generation
+// Fixed balanced test set: 250 per group, 50/50 class split
+// Drawn from the END of the pools (indices 1500–1999) to avoid overlap with training data
+test_pool = {
+  const N = 250; // per group
+  const half = N / 2;
+  return [
+    ...male_neg_pool.slice(1500, 1500 + half).map(d => ({...d, test_group: "Male",   test_class: "Negative"})),
+    ...male_pos_pool.slice(1500, 1500 + half).map(d => ({...d, test_group: "Male",   test_class: "Positive"})),
+    ...female_neg_pool.slice(1500, 1500 + half).map(d => ({...d, test_group: "Female", test_class: "Negative"})),
+    ...female_pos_pool.slice(1500, 1500 + half).map(d => ({...d, test_group: "Female", test_class: "Positive"}))
+  ];
+}
+```
