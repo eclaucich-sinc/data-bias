@@ -540,3 +540,19 @@ body {
     border-top: 1px solid rgba(99, 120, 255, 0.12);
   }
 }
+/* ── Select Dropdown Styling ── */
+.controls-card select {
+  background-color: #1a1d2d;
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.85rem;
+  outline: none;
+  width: 100%;
+  margin-top: 4px;
+}
+.controls-card select:focus {
+  border-color: #6378ff;
+}

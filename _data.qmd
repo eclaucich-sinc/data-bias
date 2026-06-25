@@ -24,59 +24,94 @@ ojs_define(
 )
 ```
 
-
 ```{ojs}
-//| label: transform-point
+//| label: effective-parameters
+
+// Compute effective parameters based on the selected Bias Preset and Amount
+eff_params = {
+  let emp = { ...params_mp };
+  let emn = { ...params_mn };
+  let efp = { ...params_fp };
+  let efn = { ...params_fn };
+
+  if (bias_type === "Feature predictivity") {
+    emp.std_x += bias_amount * 2; emp.std_y += bias_amount * 2;
+    emn.std_x += bias_amount * 2; emn.std_y += bias_amount * 2;
+    efp.std_x += bias_amount * 2; efp.std_y += bias_amount * 2;
+    efn.std_x += bias_amount * 2; efn.std_y += bias_amount * 2;
+  } else if (bias_type === "Task-difficulty difference") {
+    efp.std_x += bias_amount * 3; efp.std_y += bias_amount * 3;
+    efn.std_x += bias_amount * 3; efn.std_y += bias_amount * 3;
+  } else if (bias_type === "Proxies") {
+    efp.mean_x += bias_amount * 6;
+    efn.mean_x += bias_amount * 6;
+  } else if (bias_type === "Base-rate difference") {
+    // Shift weight so male becomes mostly positive, female mostly negative
+    efp.weight = Math.max(0, efp.weight - bias_amount * 0.9 * params_fp.weight);
+    emn.weight = Math.max(0, emn.weight - bias_amount * 0.9 * params_mn.weight);
+    efn.weight += bias_amount * 1 * params_fn.weight;
+    emp.weight += bias_amount * 1 * params_mp.weight;
+  }
+  
+  return { mp: emp, mn: emn, fp: efp, fn: efn };
+}
+
+eff_params_mp = eff_params.mp
+eff_params_mn = eff_params.mn
+eff_params_fp = eff_params.fp
+eff_params_fn = eff_params.fn
+
+getP = (g, c) => (g === "Male") ? (c === "Positive" ? eff_params_mp : eff_params_mn) : (c === "Positive" ? eff_params_fp : eff_params_fn)
+
 transformPoint = (bx, by, p) => {
-  const nx = p.std_x * bx;
-  const ny = p.corr * p.std_y * bx + p.std_y * Math.sqrt(1 - p.corr * p.corr) * by;
+  const nx = p.mean_x + p.std_x * bx;
+  const ny = p.mean_y + p.std_y * by;
   return [nx, ny];
 }
-```
 
+buildDataset = (count, startIndex) => {
+  const total_weight = eff_params_mn.weight + eff_params_mp.weight + eff_params_fn.weight + eff_params_fp.weight || 1;
+  
+  const n_male_neg = Math.floor(count * (eff_params_mn.weight / total_weight));
+  const n_male_pos = Math.floor(count * (eff_params_mp.weight / total_weight));
+  const n_female_neg = Math.floor(count * (eff_params_fn.weight / total_weight));
+  const n_female_pos = Math.max(0, count - n_male_neg - n_male_pos - n_female_neg);
+
+  let subset = [
+    ...male_neg_pool.slice(startIndex, startIndex + n_male_neg),
+    ...male_pos_pool.slice(startIndex, startIndex + n_male_pos),
+    ...female_neg_pool.slice(startIndex, startIndex + n_female_neg),
+    ...female_pos_pool.slice(startIndex, startIndex + n_female_pos)
+  ].map(d => ({...d, original_class: d.class, is_noise: false}));
+
+  // Apply instance-dependent Label Bias if selected
+  if (bias_type === "Label bias" && bias_amount > 0) {
+    const boundaryY = (eff_params_fp.mean_y + eff_params_fn.mean_y) / 2;
+    subset.forEach(d => {
+      const [nx, ny] = transformPoint(d.base_x, d.base_y, getP(d.group, d.original_class));
+      d.distToBoundary = Math.abs(ny - boundaryY);
+    });
+
+    const females = subset.filter(d => d.group === "Female");
+    females.sort((a, b) => a.distToBoundary - b.distToBoundary);
+    
+    const numToFlip = Math.floor(females.length * bias_amount * 0.8);
+    for (let i = 0; i < numToFlip; i++) {
+      females[i].class = females[i].original_class === "Positive" ? "Negative" : "Positive";
+      females[i].is_noise = true;
+    }
+  }
+
+  return subset;
+}
+```
 
 ```{ojs}
 //| label: reactive-data
-active_data = {
-  const n_female = Math.floor(total_samples * minority_ratio);
-  const n_male = total_samples - n_female;
-  const n_female_pos = Math.floor(n_female * positive_ratio);
-  const n_female_neg = n_female - n_female_pos;
-  const n_male_pos = Math.floor(n_male * positive_ratio);
-  const n_male_neg = n_male - n_male_pos;
-
-  const applyNoise = (data, count, originalClass, flippedClass, noiseRatio) => {
-    const nFlipped = Math.floor(count * noiseRatio);
-    return data.slice(0, count).map((d, i) => ({
-      ...d,
-      original_class: originalClass,
-      class: i < nFlipped ? flippedClass : originalClass,
-      is_noise: i < nFlipped // Let's also track if a point was flipped just in case you need it later
-    }));
-  };
-
-  return [
-    ...applyNoise(male_neg_pool, n_male_neg, "Negative", "Positive", params_mn.noise),
-    ...applyNoise(male_pos_pool, n_male_pos, "Positive", "Negative", params_mp.noise),
-    ...applyNoise(female_neg_pool, n_female_neg, "Negative", "Positive", params_fn.noise),
-    ...applyNoise(female_pos_pool, n_female_pos, "Positive", "Negative", params_fp.noise)
-  ];
-}
-```
-
-
-```{ojs}
-//| label: test-pool-generation
-// Fixed balanced test set: 250 per group, 50/50 class split
-// Drawn from the END of the pools (indices 1500–1999) to avoid overlap with training data
-test_pool = {
-  const N = 250; // per group
-  const half = N / 2;
-  return [
-    ...male_neg_pool.slice(1500, 1500 + half).map(d => ({...d, test_group: "Male",   test_class: "Negative"})),
-    ...male_pos_pool.slice(1500, 1500 + half).map(d => ({...d, test_group: "Male",   test_class: "Positive"})),
-    ...female_neg_pool.slice(1500, 1500 + half).map(d => ({...d, test_group: "Female", test_class: "Negative"})),
-    ...female_pos_pool.slice(1500, 1500 + half).map(d => ({...d, test_group: "Female", test_class: "Positive"}))
-  ];
-}
+// Train set
+active_data = buildDataset(total_samples, 0)
+// Validation set (fixed size 300)
+val_pool = buildDataset(300, 1000)
+// Test set (fixed size 500)
+test_pool = buildDataset(500, 1400)
 ```

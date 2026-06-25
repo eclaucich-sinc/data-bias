@@ -1,235 +1,45 @@
 ```{ojs}
-//| label: train-model
-train_trigger = {
-  // Expose training fn to the button via window
-  window._trainModel = () => {
-    const btn = document.getElementById("train-btn");
+//| label: export-csv
+export_trigger = {
+  window._downloadCSV = () => {
+    const btn = document.getElementById("download-btn");
     if (btn) { btn.classList.add("loading"); btn.querySelector(".btn-spinner").style.display = "block"; }
-
-    // Small delay so the spinner renders before the JS blocks the thread
+    
     setTimeout(() => {
-      // ── 1. Build feature matrix from active_data ──────────────────────────
-      const getP = (g, c) => (g === "Male") ? (c === "Positive" ? params_mp : params_mn) : (c === "Positive" ? params_fp : params_fn);
+      // Collect data
+      const getP = (g, c) => (g === "Male") ? (c === "Positive" ? eff_params_mp : eff_params_mn) : (c === "Positive" ? eff_params_fp : eff_params_fn);
 
-      const featurize = (d, gDisp, cSep) => {
-        const [nx, ny] = transformPoint(d.base_x, d.base_y, getP(d.group, d.original_class || d.class));
-        return [
-          nx + (d.group === "Female" ? gDisp : 0),
-          ny + ((d.original_class || d.class) === "Positive" ? cSep : 0)
-        ];
+      const featurize = (d) => {
+        const [nx, ny] = transformPoint(d.base_x, d.base_y, getP(d.group, d.original_class));
+        return [nx, ny];
       };
 
-      const X_train = active_data.map(d => featurize(d, group_disparity, class_separation));
-      const y_train = active_data.map(d => d.class === "Positive" ? 1 : 0);
-
-      // Standardize (mean/std from training set)
-      const mean0 = X_train.reduce((s,x)=>s+x[0],0)/X_train.length;
-      const mean1 = X_train.reduce((s,x)=>s+x[1],0)/X_train.length;
-      const std0  = Math.sqrt(X_train.reduce((s,x)=>s+(x[0]-mean0)**2,0)/X_train.length) || 1;
-      const std1  = Math.sqrt(X_train.reduce((s,x)=>s+(x[1]-mean1)**2,0)/X_train.length) || 1;
-      const Xn = X_train.map(([a, b]) => [(a - mean0) / std0, (b - mean1) / std1]);
-
-      // ── 2. Train selected model ───────────────────────────────────────────
-      const sigmoid = z => 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))));
-      const normFn  = (xv, yv) => [(xv - mean0) / std0, (yv - mean1) / std1];
-
-      let predictNorm; // (xn, yn) -> probability
-
-      if (model_type === "mlp") {
-        // ── MLP [2 → 16 → 32 → 1], ReLU hidden layers, sigmoid output ────────
-        const H1 = 16, H2 = 32, lr_mlp = 0.05, ep_mlp = 600;
-
-        // Layer 1: [2 → H1]
-        const W1 = Float64Array.from({length: H1*2},  () => (Math.random()*2-1) * Math.sqrt(2/2));
-        const b1 = new Float64Array(H1);
-        // Layer 2: [H1 → H2]
-        const W2 = Float64Array.from({length: H2*H1}, () => (Math.random()*2-1) * Math.sqrt(2/H1));
-        const b2 = new Float64Array(H2);
-        // Output: [H2 → 1]
-        const W3 = Float64Array.from({length: H2},    () => (Math.random()*2-1) * Math.sqrt(2/H2));
-        let   b3 = 0;
-
-        const fwdMLP = (x0, x1) => {
-          // Layer 1
-          const z1 = new Float64Array(H1), a1 = new Float64Array(H1);
-          for (let j = 0; j < H1; j++) {
-            z1[j] = W1[j*2]*x0 + W1[j*2+1]*x1 + b1[j];
-            a1[j] = Math.max(0, z1[j]);
-          }
-          // Layer 2
-          const z2 = new Float64Array(H2), a2 = new Float64Array(H2);
-          for (let k = 0; k < H2; k++) {
-            let s = b2[k];
-            for (let j = 0; j < H1; j++) s += W2[k*H1+j] * a1[j];
-            z2[k] = s;
-            a2[k] = Math.max(0, s);
-          }
-          // Output
-          let z3 = b3;
-          for (let k = 0; k < H2; k++) z3 += W3[k] * a2[k];
-          return { prob: sigmoid(z3), z1, a1, z2, a2 };
-        };
-
-        for (let ep = 0; ep < ep_mlp; ep++) {
-          const dW1 = new Float64Array(H1*2),  db1 = new Float64Array(H1);
-          const dW2 = new Float64Array(H2*H1), db2 = new Float64Array(H2);
-          const dW3 = new Float64Array(H2);    let db3g = 0;
-
-          for (let i = 0; i < Xn.length; i++) {
-            const { prob, z1, a1, z2, a2 } = fwdMLP(Xn[i][0], Xn[i][1]);
-            // Output gradient
-            const dz3 = prob - y_train[i];
-            for (let k = 0; k < H2; k++) dW3[k] += dz3 * a2[k];
-            db3g += dz3;
-            // Layer 2 gradient
-            for (let k = 0; k < H2; k++) {
-              const da2 = dz3 * W3[k];
-              const dz2k = z2[k] > 0 ? da2 : 0;
-              db2[k] += dz2k;
-              for (let j = 0; j < H1; j++) {
-                dW2[k*H1+j] += dz2k * a1[j];
-              }
-              // Accumulate dL/da1
-              // (handled per-j below for efficiency)
-            }
-            // Layer 1 gradient
-            for (let j = 0; j < H1; j++) {
-              let da1 = 0;
-              for (let k = 0; k < H2; k++) {
-                const dz2k = z2[k] > 0 ? (dz3 * W3[k]) : 0;
-                da1 += dz2k * W2[k*H1+j];
-              }
-              const dz1j = z1[j] > 0 ? da1 : 0;
-              dW1[j*2]   += dz1j * Xn[i][0];
-              dW1[j*2+1] += dz1j * Xn[i][1];
-              db1[j]     += dz1j;
-            }
-          }
-
-          const n = Xn.length;
-          for (let j = 0; j < H1*2;  j++) W1[j] -= lr_mlp * dW1[j] / n;
-          for (let j = 0; j < H1;    j++) b1[j] -= lr_mlp * db1[j] / n;
-          for (let k = 0; k < H2*H1; k++) W2[k] -= lr_mlp * dW2[k] / n;
-          for (let k = 0; k < H2;    k++) { b2[k] -= lr_mlp * db2[k] / n; W3[k] -= lr_mlp * dW3[k] / n; }
-          b3 -= lr_mlp * db3g / n;
-        }
-        predictNorm = (xn, yn) => fwdMLP(xn, yn).prob;
-
-
-      } else {
-        // ── Logistic Regression via GD ─────────────────────────────────
-        let w = [0, 0], bias = 0;
-        const lr = 0.1, epochs = 200;
-        for (let ep = 0; ep < epochs; ep++) {
-          let gw0 = 0, gw1 = 0, gb = 0;
-          for (let i = 0; i < Xn.length; i++) {
-            const pred = sigmoid(w[0]*Xn[i][0] + w[1]*Xn[i][1] + bias);
-            const err  = pred - y_train[i];
-            gw0 += err * Xn[i][0]; gw1 += err * Xn[i][1]; gb += err;
-          }
-          const n = Xn.length;
-          w[0] -= lr * gw0 / n; w[1] -= lr * gw1 / n; bias -= lr * gb / n;
-        }
-        predictNorm = (xn, yn) => sigmoid(w[0]*xn + w[1]*yn + bias);
-      }
-
-      // Store model for boundary drawing
-      window._model = { predictNorm, norm: normFn };
-
-      // ── 3. Evaluate on fixed balanced test set ────────────────────────────
-      // Test pool points use test_group / test_class fields
-      const featurize_test = (d, gDisp, cSep) => {
-        const [nx, ny] = transformPoint(d.base_x, d.base_y, getP(d.test_group, d.test_class));
-        return [
-          nx + (d.test_group === "Female" ? gDisp : 0),
-          ny + (d.test_class === "Positive" ? cSep : 0)
-        ];
+      const formatRow = (d, split) => {
+        const [x, y] = featurize(d);
+        return `${d.id},${d.group},${d.original_class},${d.class},${x.toFixed(4)},${y.toFixed(4)},${split}`;
       };
 
-      const predict = d => {
-        const [xv, yv] = featurize_test(d, group_disparity, class_separation);
-        return predictNorm(...normFn(xv, yv)) >= 0.5 ? "Positive" : "Negative";
-      };
+      let csvLines = ["id,group,true_class,observed_class,x,y,split"];
+      
+      active_data.forEach(d => csvLines.push(formatRow(d, "Train")));
+      val_pool.forEach(d => csvLines.push(formatRow(d, "Val")));
+      test_pool.forEach(d => csvLines.push(formatRow(d, "Test")));
 
-      const groups = [
-        { key: "Male",   label: "Male",   color: "#1f77b4" },
-        { key: "Female", label: "Female", color: "#d62728" }
-      ];
-      const classes = ["Positive", "Negative"];
-
-      const results = groups.map(grp => {
-        const groupData = test_pool.filter(d => d.test_group === grp.key);
-        const metrics = classes.map(cls => {
-          const subset  = groupData.filter(d => d.test_class === cls);
-          const correct = subset.filter(d => predict(d) === cls).length;
-          // Precision & Recall for this class within this group
-          const predicted_pos = groupData.filter(d => predict(d) === cls);
-          const tp = predicted_pos.filter(d => d.test_class === cls).length;
-          const precision = predicted_pos.length > 0 ? tp / predicted_pos.length : 0;
-          const recall    = subset.length > 0 ? correct / subset.length : 0;
-          return { cls, acc: correct / subset.length, precision, recall, n: subset.length };
-        });
-        const overall = groupData.filter(d => predict(d) === d.test_class).length / groupData.length;
-        return { ...grp, metrics, overall };
-      });
-
-      // ── 4. Render results ─────────────────────────────────────────────────
-      const panel = document.getElementById("results-panel");
-      const grid  = document.getElementById("results-grid");
-      if (!panel || !grid) return;
-
-      const barColor = (acc) => {
-        if (acc >= 0.8) return "#22c55e";
-        if (acc >= 0.6) return "#f59e0b";
-        return "#ef4444";
-      };
-
-      grid.innerHTML = "";
-      results.forEach(grp => {
-        const card = document.createElement("div");
-        card.className = "metric-card";
-        card.innerHTML = `
-          <div class="metric-card-header">
-            <span class="metric-group-dot" style="background:${grp.color}"></span>
-            <span class="metric-group-label">${grp.label}</span>
-            <span style="margin-left:auto;font-size:0.7rem;color:#64748b">Overall acc <strong style="color:#a5b4fc">${(grp.overall*100).toFixed(1)}%</strong></span>
-          </div>
-          <hr class="metric-divider">
-          <div class="metric-rows">
-            ${grp.metrics.map(m => `
-              <div class="metric-row">
-                <div class="metric-row-label">
-                  <span class="metric-row-name">${m.cls} class (n=${m.n})</span>
-                  <span class="metric-row-value">Acc ${(m.acc*100).toFixed(1)}%  ·  Prec ${(m.precision*100).toFixed(1)}%  ·  Rec ${(m.recall*100).toFixed(1)}%</span>
-                </div>
-                <div class="metric-bar-bg">
-                  <div class="metric-bar-fill" data-val="${m.acc}" style="background:${barColor(m.acc)}"></div>
-                </div>
-              </div>
-            `).join("")}
-          </div>
-        `;
-        grid.appendChild(card);
-      });
-
-      // Hide empty state, show results
-      const emptyEl = document.getElementById("results-empty");
-      if (emptyEl) emptyEl.style.display = "none";
-      panel.classList.add("visible");
-
-      // Draw decision boundary on the chart
-      window._drawBoundary && window._drawBoundary();
-      window._drawTestChart && window._drawTestChart();
-
-      // Animate bars with a small delay so CSS transition fires
-      setTimeout(() => {
-        panel.querySelectorAll(".metric-bar-fill").forEach(bar => {
-          bar.style.width = (parseFloat(bar.dataset.val) * 100) + "%";
-        });
-      }, 60);
+      const csvString = csvLines.join("\n");
+      const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      let filename = bias_type === "None" ? "bias_dataset_manual.csv" : `bias_dataset_${bias_type.replace(/ /g,"_").toLowerCase()}.csv`;
+      link.setAttribute("download", filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
 
       if (btn) { btn.classList.remove("loading"); btn.querySelector(".btn-spinner").style.display = "none"; }
-    }, 50);
+    }, 100);
   };
   return null;
 }

@@ -12,6 +12,7 @@ chart = {
 
   // Color map
   const getColor = d => d.class === "Positive" ? "#1f77b4" : "#d62728";
+  const getTestColor = d => d.original_class === "Positive" ? "#1f77b4" : "#d62728";
 
   const symbolGenerator = d3.symbol();
 
@@ -24,14 +25,10 @@ chart = {
   const xScale = d3.scaleLinear().domain([-4, 10]).range([0, innerW]);
   const yScale = d3.scaleLinear().domain([-4, 10]).range([innerH, 0]);
 
-  // Build/reuse SVG
+  // ── Training Chart ──────────────────────────────────────────────────────────
   let svg = d3.select("#chart-container svg");
   if (svg.empty()) {
-    svg = d3.select("#chart-container")
-      .append("svg")
-      .attr("width", W)
-      .attr("height", H)
-      .style("display", "block");
+    svg = d3.select("#chart-container").append("svg").attr("width", W).attr("height", H).style("display", "block");
   } else {
     svg.attr("width", W).attr("height", H);
   }
@@ -47,8 +44,7 @@ chart = {
 
   let g = svg.select("g.inner");
   if (g.empty()) {
-    g = svg.append("g").attr("class", "inner")
-      .attr("transform", `translate(${margin.left},${margin.top})`);
+    g = svg.append("g").attr("class", "inner").attr("transform", `translate(${margin.left},${margin.top})`);
   }
 
   let plotArea = g.select(".plot-area");
@@ -59,24 +55,17 @@ chart = {
   // Grid lines
   let gridGroup = g.select(".grid");
   if (gridGroup.empty()) gridGroup = g.append("g").attr("class", "grid");
-  gridGroup.selectAll(".grid-h")
-    .data(yScale.ticks(6))
-    .join("line").attr("class","grid-h")
-    .attr("x1", 0).attr("x2", innerW)
-    .attr("y1", d => yScale(d)).attr("y2", d => yScale(d))
+  gridGroup.selectAll(".grid-h").data(yScale.ticks(6)).join("line").attr("class","grid-h")
+    .attr("x1", 0).attr("x2", innerW).attr("y1", d => yScale(d)).attr("y2", d => yScale(d))
     .attr("stroke", "rgba(255,255,255,0.05)").attr("stroke-width", 1);
-  gridGroup.selectAll(".grid-v")
-    .data(xScale.ticks(6))
-    .join("line").attr("class","grid-v")
-    .attr("x1", d => xScale(d)).attr("x2", d => xScale(d))
-    .attr("y1", 0).attr("y2", innerH)
+  gridGroup.selectAll(".grid-v").data(xScale.ticks(6)).join("line").attr("class","grid-v")
+    .attr("x1", d => xScale(d)).attr("x2", d => xScale(d)).attr("y1", 0).attr("y2", innerH)
     .attr("stroke", "rgba(255,255,255,0.05)").attr("stroke-width", 1);
 
   // Axes
   let xAxisG = g.select(".x-axis");
   if (xAxisG.empty()) xAxisG = g.append("g").attr("class","x-axis");
-  xAxisG.attr("transform", `translate(0,${innerH})`)
-    .call(d3.axisBottom(xScale).ticks(6).tickSize(4))
+  xAxisG.attr("transform", `translate(0,${innerH})`).call(d3.axisBottom(xScale).ticks(6).tickSize(4))
     .call(ax => {
       ax.select(".domain").attr("stroke","rgba(255,255,255,0.15)");
       ax.selectAll("text").attr("fill","#64748b").attr("font-size","11px").attr("font-family","Inter,sans-serif");
@@ -111,16 +100,14 @@ chart = {
       .text("Feature Y  (Class Separation axis)");
   }
 
-  const getP = (g, c) => (g === "Male") ? (c === "Positive" ? params_mp : params_mn) : (c === "Positive" ? params_fp : params_fn);
-
   // Points
   const getX = d => {
     const [nx, ny] = transformPoint(d.base_x, d.base_y, getP(d.group, d.original_class));
-    return xScale(nx + (d.group === "Female" ? group_disparity : 0));
+    return xScale(nx);
   };
   const getY = d => {
     const [nx, ny] = transformPoint(d.base_x, d.base_y, getP(d.group, d.original_class));
-    return yScale(ny + (d.original_class === "Positive" ? class_separation : 0));
+    return yScale(ny);
   };
 
   plotArea.selectAll("path.point")
@@ -141,134 +128,6 @@ chart = {
         .attr("d", d => getPath(d, 0)).attr("opacity", 0).remove())
     );
 
-  // ── Decision boundary: training chart ──────────────────────────────────────────────
-  const drawContour = (targetG, xSc, ySc) => {
-    const m = window._model;
-    if (!m || !m.predictNorm) return;
-    const GRID = 80;
-    
-    // Pad domain slightly so the closed edges of the contour fall outside the SVG clipPath
-    const oX = xSc.domain(), oY = ySc.domain();
-    const px = (oX[1] - oX[0]) * 0.1, py = (oY[1] - oY[0]) * 0.1;
-    const xDom = [oX[0] - px, oX[1] + px], yDom = [oY[0] - py, oY[1] + py];
-
-    const xStep = (xDom[1] - xDom[0]) / GRID, yStep = (yDom[1] - yDom[0]) / GRID;
-    const Wg = GRID + 1, Hg = GRID + 1;
-    const vals = new Float64Array(Wg * Hg);
-    for (let r = 0; r < Hg; r++) {
-      const yv = yDom[1] - r * yStep;
-      for (let c = 0; c < Wg; c++)
-        vals[r * Wg + c] = m.predictNorm(...m.norm(xDom[0] + c * xStep, yv));
-    }
-    const cd = d3.contours().size([Wg, Hg]).thresholds([0.5])(vals);
-    const pg = d3.geoPath().projection(
-      d3.geoTransform({ point(c, r) { this.stream.point(xSc(xDom[0]+c*xStep), ySc(yDom[1]-r*yStep)); } })
-    );
-    let gl = targetG.select(".boundary-glow");
-    if (gl.empty()) gl = targetG.insert("g", ".point").attr("class", "boundary-glow");
-    gl.selectAll("path").data(cd).join("path").attr("d", pg)
-      .attr("fill","none").attr("stroke","rgba(250,204,21,0.15)").attr("stroke-width",12)
-      .attr("stroke-linejoin","round").attr("opacity",0).transition().duration(700).attr("opacity",1);
-    let ln = targetG.select(".boundary-line");
-    if (ln.empty()) ln = targetG.insert("g", ".point").attr("class", "boundary-line");
-    ln.selectAll("path").data(cd).join("path").attr("d", pg)
-      .attr("fill","none").attr("stroke","#fbbf24").attr("stroke-width",2)
-      .attr("stroke-dasharray","7 4").attr("stroke-linejoin","round")
-      .attr("opacity",0).transition().duration(700).attr("opacity",0.9);
-  };
-
-  window._drawBoundary = () => drawContour(plotArea, xScale, yScale);
-
-  // ── Test chart draw function (redraws on slider change if model exists) ─────
-  window._drawTestChart = () => {
-    const m = window._model;
-    if (!m || !m.predictNorm) return;
-    const tc = document.getElementById("test-chart-container");
-    if (!tc) return;
-    const empty = document.getElementById("test-chart-empty");
-    if (empty) empty.style.display = "none";
-
-    const sz = Math.max((tc.clientWidth || 520) - 30, 320);
-    const marg = {top: 24, right: 24, bottom: 48, left: 52};
-    const iW = sz - marg.left - marg.right, iH = sz - marg.top - marg.bottom;
-    const xSc = d3.scaleLinear().domain([-4, 10]).range([0, iW]);
-    const ySc = d3.scaleLinear().domain([-4, 10]).range([iH, 0]);
-
-    let tsvg = d3.select("#test-chart-container svg");
-    if (tsvg.empty()) {
-      tsvg = d3.select("#test-chart-container").append("svg")
-        .attr("width", sz).attr("height", sz).style("display", "block");
-    } else { tsvg.attr("width", sz).attr("height", sz); }
-
-    let tdefs = tsvg.select("defs");
-    if (tdefs.empty()) tdefs = tsvg.append("defs");
-    let tclip = tdefs.select("#test-clip");
-    if (tclip.empty()) {
-      tclip = tdefs.append("clipPath").attr("id", "test-clip");
-      tclip.append("rect");
-    }
-    tclip.select("rect").attr("width", iW).attr("height", iH);
-
-    let tg = tsvg.select("g.inner");
-    if (tg.empty()) tg = tsvg.append("g").attr("class","inner").attr("transform",`translate(${marg.left},${marg.top})`);
-
-    let tPlotArea = tg.select(".plot-area");
-    if (tPlotArea.empty()) {
-      tPlotArea = tg.append("g").attr("class", "plot-area").attr("clip-path", "url(#test-clip)");
-    }
-
-    // Grid
-    let gridG = tg.select(".grid"); if (gridG.empty()) gridG = tg.append("g").attr("class","grid");
-    gridG.selectAll(".gh").data(ySc.ticks(6)).join("line").attr("class","gh")
-      .attr("x1",0).attr("x2",iW).attr("y1",d=>ySc(d)).attr("y2",d=>ySc(d))
-      .attr("stroke","rgba(255,255,255,0.05)").attr("stroke-width",1);
-    gridG.selectAll(".gv").data(xSc.ticks(6)).join("line").attr("class","gv")
-      .attr("x1",d=>xSc(d)).attr("x2",d=>xSc(d)).attr("y1",0).attr("y2",iH)
-      .attr("stroke","rgba(255,255,255,0.05)").attr("stroke-width",1);
-
-    // Axes
-    let xAg = tg.select(".x-axis"); if (xAg.empty()) xAg = tg.append("g").attr("class","x-axis");
-    xAg.attr("transform",`translate(0,${iH})`).call(d3.axisBottom(xSc).ticks(6).tickSize(4))
-      .call(ax => { ax.select(".domain").attr("stroke","rgba(255,255,255,0.15)");
-        ax.selectAll("text").attr("fill","#64748b").attr("font-size","11px").attr("font-family","Inter,sans-serif");
-        ax.selectAll(".tick line").attr("stroke","rgba(255,255,255,0.1)"); });
-    let yAg = tg.select(".y-axis"); if (yAg.empty()) yAg = tg.append("g").attr("class","y-axis");
-    yAg.call(d3.axisLeft(ySc).ticks(6).tickSize(4))
-      .call(ax => { ax.select(".domain").attr("stroke","rgba(255,255,255,0.15)");
-        ax.selectAll("text").attr("fill","#64748b").attr("font-size","11px").attr("font-family","Inter,sans-serif");
-        ax.selectAll(".tick line").attr("stroke","rgba(255,255,255,0.1)"); });
-
-    // Test points (colored by true class, shaped by group)
-    const sym = d3.symbol();
-    const getTestX = d => {
-      const [nx, ny] = transformPoint(d.base_x, d.base_y, getP(d.test_group, d.test_class));
-      return xSc(nx + (d.test_group === "Female" ? group_disparity : 0));
-    };
-    const getTestY = d => {
-      const [nx, ny] = transformPoint(d.base_x, d.base_y, getP(d.test_group, d.test_class));
-      return ySc(ny + (d.test_class === "Positive" ? class_separation : 0));
-    };
-    const getTestColor = d => d.test_class === "Positive" ? "#1f77b4" : "#d62728";
-    const getTestPath = (d, s) => { sym.type(d.test_group==="Male" ? d3.symbolCircle : d3.symbolCross).size(s); return sym(); };
-
-    tPlotArea.selectAll("path.tpoint")
-      .data(test_pool, d => d.id)
-      .join(
-        enter => enter.append("path").attr("class","tpoint")
-          .attr("transform", d => `translate(${getTestX(d)},${getTestY(d)})`)
-          .attr("d", d => getTestPath(d, 0)).attr("fill", getTestColor).attr("opacity",0)
-          .call(e => e.transition().duration(450).attr("d", d=>getTestPath(d,60)).attr("opacity",0.72)),
-        update => update.call(u => u.transition().duration(450)
-          .attr("transform", d => `translate(${getTestX(d)},${getTestY(d)})`)
-          .attr("d", d => getTestPath(d,60)).attr("fill", getTestColor).attr("opacity",0.72)),
-        exit => exit.call(x => x.transition().duration(280).attr("d",d=>getTestPath(d,0)).attr("opacity",0).remove())
-      );
-
-    // Decision boundary on test chart
-    drawContour(tPlotArea, xSc, ySc);
-  };
-
-  if (window._model) { window._drawBoundary(); window._drawTestChart(); }
 
   return null;
 }
