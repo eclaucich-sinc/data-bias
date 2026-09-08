@@ -7,16 +7,8 @@ export_trigger = {
     
     setTimeout(() => {
       // Collect data
-      const getP = (g, c) => (g === "Male") ? (c === "Positive" ? eff_params_mp : eff_params_mn) : (c === "Positive" ? eff_params_fp : eff_params_fn);
-
-      const featurize = (d) => {
-        const [nx, ny] = transformPoint(d.base_x, d.base_y, getP(d.group, d.original_class));
-        return [nx, ny];
-      };
-
       const formatRow = (d, split) => {
-        const [x, y] = featurize(d);
-        return `${d.id},${d.group},${d.original_class},${d.class},${x.toFixed(4)},${y.toFixed(4)},${split}`;
+        return `${d.id},${d.group},${d.original_class},${d.class},${d.X_s_prime.toFixed(4)},${d.X_y_prime.toFixed(4)},${split}`;
       };
 
       let csvLines = ["id,group,true_class,observed_class,x,y,split"];
@@ -31,7 +23,7 @@ export_trigger = {
       
       const link = document.createElement("a");
       link.setAttribute("href", url);
-      let filename = bias_type === "None" ? "bias_dataset_manual.csv" : `bias_dataset_${bias_type.replace(/ /g,"_").toLowerCase()}.csv`;
+      let filename = "bias_dataset_custom.csv";
       link.setAttribute("download", filename);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);

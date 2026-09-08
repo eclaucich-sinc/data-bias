@@ -1,11 +1,9 @@
 ```{ojs}
 //| label: chart-render
 chart = {
-  // Dimensions — square aspect ratio
-  const container = document.getElementById("chart-container");
-  const size = Math.max((container?.clientWidth || 520) - 30, 320);
-  const W = size;
-  const H = size;
+  // Dimensions — fixed square aspect ratio
+  const W = 528;
+  const H = 528;
   const margin = {top: 24, right: 24, bottom: 48, left: 52};
   const innerW = W - margin.left - margin.right;
   const innerH = H - margin.top - margin.bottom;
@@ -17,13 +15,13 @@ chart = {
   const symbolGenerator = d3.symbol();
 
   const getPath = (d, size) => {
-    symbolGenerator.type(d.group === "Male" ? d3.symbolCircle : d3.symbolCross).size(size);
+    symbolGenerator.type(d.group === "Privileged" ? d3.symbolCircle : d3.symbolCross).size(size);
     return symbolGenerator();
   };
 
-  // Scales
-  const xScale = d3.scaleLinear().domain([-4, 10]).range([0, innerW]);
-  const yScale = d3.scaleLinear().domain([-4, 10]).range([innerH, 0]);
+  // Scales (Expanded to [-8, 8] to fit noise)
+  const xScale = d3.scaleLinear().domain([-8, 8]).range([0, innerW]);
+  const yScale = d3.scaleLinear().domain([-8, 8]).range([innerH, 0]);
 
   // ── Training Chart ──────────────────────────────────────────────────────────
   let svg = d3.select("#chart-container svg");
@@ -101,14 +99,8 @@ chart = {
   }
 
   // Points
-  const getX = d => {
-    const [nx, ny] = transformPoint(d.base_x, d.base_y, getP(d.group, d.original_class));
-    return xScale(nx);
-  };
-  const getY = d => {
-    const [nx, ny] = transformPoint(d.base_x, d.base_y, getP(d.group, d.original_class));
-    return yScale(ny);
-  };
+  const getX = d => xScale(d.X_s_prime);
+  const getY = d => yScale(d.X_y_prime);
 
   plotArea.selectAll("path.point")
     .data(active_data, d => d.id)

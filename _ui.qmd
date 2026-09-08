@@ -8,141 +8,105 @@ layout = {
   const root = document.createElement("div");
   root.id = "playground-layout";
 
-  // ── SIDEBAR ────────────────────────────────────────────────────────────────
-  const sidebar = document.createElement("div");
-  sidebar.id = "sidebar";
-
-  // Legend section
-  const legendSection = document.createElement("div");
-  legendSection.innerHTML = `
-    <p class="sidebar-section-title">Legend</p>
-    <div class="legend-card">
-      <div class="legend-grid">
-        <div class="legend-item">
-          <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#d62728"/></svg> Male Negative
-        </div>
-        <div class="legend-item">
-          <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#1f77b4"/></svg> Male Positive
-        </div>
-        <div class="legend-item">
-          <svg width="12" height="12"><path d="M2,2 L10,10 M10,2 L2,10" stroke="#d62728" stroke-width="2.5"/></svg> Female Negative
-        </div>
-        <div class="legend-item">
-          <svg width="12" height="12"><path d="M2,2 L10,10 M10,2 L2,10" stroke="#1f77b4" stroke-width="2.5"/></svg> Female Positive
-        </div>
-      </div>
-    </div>
-  `;
-
-  // Bias Configuration section
-  const biasSection = document.createElement("div");
-  biasSection.innerHTML = `<p class="sidebar-section-title">Bias Configuration</p>`;
-  const biasCard = document.createElement("div");
-  biasCard.className = "controls-card";
-  biasCard.append(viewof_bias_type, viewof_bias_amount);
-  biasSection.append(biasCard);
-
-  // Controls section
-  const controlsSection = document.createElement("div");
-  const controlsTitle = document.createElement("p");
-  controlsTitle.className = "sidebar-section-title";
-  controlsTitle.textContent = "Base Parameters";
-
-  const controlsCard = document.createElement("div");
-  controlsCard.className = "controls-card";
-  const makeGroupDetails = (title, formElement) => {
-    const d = document.createElement("details");
-    d.style.marginBottom = "0.5rem";
-    d.innerHTML = `<summary class="sidebar-section-title" style="cursor:pointer; padding-top:0.25rem;">${title}</summary>`;
-    const wrapper = document.createElement("div");
-    wrapper.style.padding = "0.25rem 0 0 0.25rem";
-    wrapper.append(formElement);
-    d.append(wrapper);
-    return d;
-  };
-
-  controlsCard.append(
-    viewof_total_samples,
-    document.createElement("hr"),
-    makeGroupDetails("Male Positive", viewof_params_mp),
-    makeGroupDetails("Male Negative", viewof_params_mn),
-    makeGroupDetails("Female Positive", viewof_params_fp),
-    makeGroupDetails("Female Negative", viewof_params_fn)
-  );
-
-  controlsSection.append(controlsTitle, controlsCard);
-  sidebar.append(legendSection, biasSection, controlsSection);
-
-  // ── Main right area: results on top, charts below ─────────────────────────
-  const chartAndResults = document.createElement("div");
-  chartAndResults.id = "chart-and-results";
-
-  // ── Export panel at TOP ───────────────────────────────────────────────────
-  const resultsPanel = document.createElement("div");
-  resultsPanel.id = "results-panel";
-  resultsPanel.innerHTML = `
-    <div class="results-header" style="border-bottom:none; margin-bottom:0;">
-      <div class="results-title-container">
-        <p class="results-title">Dataset Export</p>
-        <p class="results-subtitle">Generate CSV with Train, Validation, and Test splits</p>
-      </div>
-      <div class="results-actions" id="results-actions"></div>
-    </div>
-  `;
-  resultsPanel.classList.add("visible");
+  // ── TOP BAR ────────────────────────────────────────────────────────────────
+  const topBar = document.createElement("div");
+  topBar.id = "top-bar";
+  topBar.innerHTML = `<h1 class="title">Bias Data Playground</h1>`;
 
   const downloadBtn = document.createElement("button");
   downloadBtn.className = "train-btn";
   downloadBtn.id = "download-btn";
+  downloadBtn.style.width = "auto";
+  downloadBtn.style.minWidth = "160px";
   downloadBtn.innerHTML = `<span class="btn-spinner"></span> <span id="download-btn-label">Download CSV</span>`;
   downloadBtn.addEventListener("click", () => window._downloadCSV && window._downloadCSV());
+  topBar.append(downloadBtn);
 
-  const resultsActions = resultsPanel.querySelector("#results-actions");
-  resultsActions.append(downloadBtn);
+  // ── SIDEBAR ────────────────────────────────────────────────────────────────
+  const sidebar = document.createElement("div");
+  sidebar.id = "sidebar";
 
-  // ── Two charts side by side ────────────────────────────────────────────────
-  const chartsRow = document.createElement("div");
-  chartsRow.id = "charts-row";
+  const biasSection = document.createElement("div");
+  biasSection.innerHTML = `<p class="sidebar-section-title">Bias Configuration</p>`;
+  const biasCard = document.createElement("div");
+  biasCard.className = "controls-card";
+  biasCard.append(
+    viewof_total_samples,
+    document.createElement("hr"),
+    viewof_base_rate_diff,
+    viewof_feature_predictivity,
+    viewof_proxies,
+    viewof_task_diff,
+    viewof_label_bias
+  );
+  biasSection.append(biasCard);
+  sidebar.append(biasSection);
 
-  // Training chart
+  // ── MAIN CONTENT ───────────────────────────────────────────────────────────
+  const mainContent = document.createElement("div");
+  mainContent.id = "main-content";
+
+  // Plot Area
   const chartArea = document.createElement("div");
   chartArea.id = "chart-area";
-  const chartHeader = document.createElement("div");
-  chartHeader.className = "chart-header";
-  chartHeader.innerHTML = `<p class="chart-title">Training Set</p><p class="chart-subtitle">Adjust parameters to explore group dynamics</p>`;
+  
+  // Legend overlay inside chartArea
+  const legendOverlay = document.createElement("div");
+  legendOverlay.style.position = "absolute";
+  legendOverlay.style.top = "1.5rem";
+  legendOverlay.style.right = "1.5rem";
+  legendOverlay.style.zIndex = "10";
+  legendOverlay.innerHTML = `
+    <div class="legend-card" style="padding: 0.75rem 1rem;">
+      <p class="sidebar-section-title" style="margin-bottom: 0.5rem;">Legend</p>
+      <div class="legend-grid">
+        <div class="legend-item">
+          <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#d62728"/></svg> Privileged Negative
+        </div>
+        <div class="legend-item">
+          <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#1f77b4"/></svg> Privileged Positive
+        </div>
+        <div class="legend-item">
+          <svg width="12" height="12"><path d="M2,2 L10,10 M10,2 L2,10" stroke="#d62728" stroke-width="2.5"/></svg> Disadvantaged Negative
+        </div>
+        <div class="legend-item">
+          <svg width="12" height="12"><path d="M2,2 L10,10 M10,2 L2,10" stroke="#1f77b4" stroke-width="2.5"/></svg> Disadvantaged Positive
+        </div>
+      </div>
+    </div>
+  `;
+  
   const chartContainer = document.createElement("div");
   chartContainer.className = "chart-container"; chartContainer.id = "chart-container";
-  chartArea.append(chartHeader, chartContainer);
+  
+  chartArea.append(legendOverlay, chartContainer);
 
-  chartsRow.append(chartArea);
-  chartAndResults.append(resultsPanel, chartsRow);
-  root.append(sidebar, chartAndResults);
+  mainContent.append(chartArea);
+  root.append(topBar, sidebar, mainContent);
   return root;
 }
 
-viewof_bias_type = Inputs.select(["None", "Base-rate difference", "Feature predictivity", "Proxies", "Task-difficulty difference", "Label bias"], {value: "None", label: "Bias Preset"})
-viewof_bias_amount = Inputs.range([0, 1], {value: 0, step: 0.05, label: "Amount of Bias"})
+viewof_feature_predictivity = Inputs.range([0, 5], {value: 0, step: 0.1, label: "Global Feature Predictivity (σ)"})
+viewof_proxies = Inputs.range([0, 5], {value: 0, step: 0.1, label: "Proxies / Separability (σ)"})
+viewof_task_diff = Inputs.range([0, 5], {value: 0, step: 0.1, label: "Task Difficulty (σ)"})
+viewof_label_bias = Inputs.range([0, 5], {value: 0, step: 0.1, label: "Label Bias (σ)"})
 
-viewof_total_samples  = Inputs.range([100, 2000], {value: 500,  step: 50,   label: "Total Samples"})
+viewof_base_rate_diff = Inputs.select([
+  "0.50 / 0.50",
+  "0.25 / 0.50",
+  "0.25 / 0.75",
+  "0.50 / 0.25",
+  "0.50 / 0.75",
+  "0.75 / 0.25",
+  "0.75 / 0.50"
+], {value: "0.50 / 0.50", label: "Base Rates (Priv / Disadv)"})
 
-makeParamsForm = (defX, defY, defW) => Inputs.form({
-  mean_x: Inputs.range([-5, 15], {value: defX, step: 0.1, label: "Mean X"}),
-  mean_y: Inputs.range([-5, 15], {value: defY, step: 0.1, label: "Mean Y"}),
-  std_x:  Inputs.range([0.1, 5], {value: 1, step: 0.1, label: "Std Dev X"}),
-  std_y:  Inputs.range([0.1, 5], {value: 1, step: 0.1, label: "Std Dev Y"}),
-  weight: Inputs.range([0, 10], {value: defW, step: 0.1, label: "Weight"})
-});
+viewof_total_samples = Inputs.range([1000, 10000], {value: 5000, step: 1000, label: "Dataset Size"})
 
-viewof_params_mp = makeParamsForm(0, 3, 1)
-viewof_params_mn = makeParamsForm(0, 0, 1)
-viewof_params_fp = makeParamsForm(3, 3, 1)
-viewof_params_fn = makeParamsForm(3, 0, 1)
-
-bias_type         = Generators.input(viewof_bias_type)
-bias_amount       = Generators.input(viewof_bias_amount)
-total_samples     = Generators.input(viewof_total_samples)
-params_mp         = Generators.input(viewof_params_mp)
-params_mn         = Generators.input(viewof_params_mn)
-params_fp         = Generators.input(viewof_params_fp)
-params_fn         = Generators.input(viewof_params_fn)
+feature_predictivity = Generators.input(viewof_feature_predictivity)
+proxies = Generators.input(viewof_proxies)
+task_diff = Generators.input(viewof_task_diff)
+label_bias = Generators.input(viewof_label_bias)
+base_rate_diff = Generators.input(viewof_base_rate_diff)
+total_samples = Generators.input(viewof_total_samples)
 ```

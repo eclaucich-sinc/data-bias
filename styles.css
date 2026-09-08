@@ -19,20 +19,28 @@ body {
 
 /* ── Page Header ── */
 .quarto-title-block {
+  display: none !important;
+}
+
+#top-bar {
+  grid-area: topbar;
   background: linear-gradient(135deg, #1e2130 0%, #161b2e 100%);
   border-bottom: 1px solid rgba(99, 120, 255, 0.25);
   padding: 1.5rem 2.5rem 1.2rem;
-  margin-bottom: 0 !important;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.quarto-title h1.title {
+.quarto-title h1.title,
+#top-bar h1.title {
   font-size: 1.6rem !important;
   font-weight: 700 !important;
   background: linear-gradient(90deg, #818cf8, #a5b4fc);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  margin: 0 0 0.25rem 0 !important;
+  margin: 0 !important;
   letter-spacing: -0.02em;
 }
 
@@ -40,12 +48,17 @@ body {
 #playground-layout {
   display: grid;
   grid-template-columns: 300px 1fr;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "topbar topbar"
+    "sidebar main";
   gap: 0;
-  min-height: calc(100vh - 80px);
+  min-height: 100vh;
 }
 
 /* ── Left Sidebar ── */
 #sidebar {
+  grid-area: sidebar;
   background: #161b2e;
   border-right: 1px solid rgba(99, 120, 255, 0.15);
   padding: 1.5rem 1.25rem;
@@ -65,10 +78,11 @@ body {
 
 /* ── Legend Card ── */
 .legend-card {
-  background: rgba(30, 33, 58, 0.7);
-  border: 1px solid rgba(99, 120, 255, 0.12);
+  background: rgba(30, 33, 58, 0.9);
+  border: 1px solid rgba(99, 120, 255, 0.25);
   border-radius: 10px;
   padding: 1rem 1.1rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 .legend-grid {
@@ -192,12 +206,22 @@ body {
   display: inline-block !important;
 }
 
-/* ── Right Chart Area ── */
-#chart-area {
+#main-content {
+  grid-area: main;
   background: #0f1117;
   padding: 2rem 2.5rem;
   display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 2rem;
+}
+
+/* ── Right Chart Area ── */
+#chart-area {
+  position: relative;
+  display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
   gap: 1rem;
 }
 
@@ -225,9 +249,6 @@ body {
   border: 1px solid rgba(99, 120, 255, 0.15);
   border-radius: 14px;
   padding: 1.25rem;
-  aspect-ratio: 1 / 1;
-  width: 100%;
-  max-width: 560px;
   display: flex;
   align-items: center;
   justify-content: center;

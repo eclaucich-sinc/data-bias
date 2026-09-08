@@ -1,117 +1,76 @@
-```{python}
-#| label: python-data-generation
-import numpy as np
-
-np.random.seed(42)
-MAX_POINTS = 2000
-
-def make_pool(group, cls):
-    return [{"id": f"{group}_{cls}_{i}", "group": group, "class": cls,
-             "base_x": float(np.random.normal(0, 1)),
-             "base_y": float(np.random.normal(0, 1))}
-            for i in range(MAX_POINTS)]
-
-data_male_neg = make_pool("Male", "Negative")
-data_male_pos = make_pool("Male", "Positive")
-data_female_neg = make_pool("Female", "Negative")
-data_female_pos = make_pool("Female", "Positive")
-
-ojs_define(
-    male_neg_pool=data_male_neg,
-    male_pos_pool=data_male_pos,
-    female_neg_pool=data_female_neg,
-    female_pos_pool=data_female_pos
-)
-```
-
 ```{ojs}
-//| label: effective-parameters
+//| label: js-data-generation
 
-// Compute effective parameters based on the selected Bias Preset and Amount
-eff_params = {
-  let emp = { ...params_mp };
-  let emn = { ...params_mn };
-  let efp = { ...params_fp };
-  let efn = { ...params_fn };
+logit = p => Math.log(p / (1 - p));
 
-  if (bias_type === "Feature predictivity") {
-    emp.std_x += bias_amount * 2; emp.std_y += bias_amount * 2;
-    emn.std_x += bias_amount * 2; emn.std_y += bias_amount * 2;
-    efp.std_x += bias_amount * 2; efp.std_y += bias_amount * 2;
-    efn.std_x += bias_amount * 2; efn.std_y += bias_amount * 2;
-  } else if (bias_type === "Task-difficulty difference") {
-    efp.std_x += bias_amount * 3; efp.std_y += bias_amount * 3;
-    efn.std_x += bias_amount * 3; efn.std_y += bias_amount * 3;
-  } else if (bias_type === "Proxies") {
-    efp.mean_x += bias_amount * 6;
-    efn.mean_x += bias_amount * 6;
-  } else if (bias_type === "Base-rate difference") {
-    // Shift weight so male becomes mostly positive, female mostly negative
-    efp.weight = Math.max(0, efp.weight - bias_amount * 0.9 * params_fp.weight);
-    emn.weight = Math.max(0, emn.weight - bias_amount * 0.9 * params_mn.weight);
-    efn.weight += bias_amount * 1 * params_fn.weight;
-    emp.weight += bias_amount * 1 * params_mp.weight;
-  }
+buildDataset = (count, seed) => {
+  // Use a seeded PRNG so that slider adjustments don't cause the entire dataset to jump randomly
+  const lcg = d3.randomLcg(seed);
+  const randomNormal = d3.randomNormal.source(lcg)(0, 1);
+  const randomUniform = d3.randomUniform.source(lcg)(0, 1);
+
+  // Parse base rates from dropdown (e.g. "0.25 / 0.50")
+  const [privRate, disadvRate] = base_rate_diff.split("/").map(Number);
   
-  return { mp: emp, mn: emn, fp: efp, fn: efn };
-}
-
-eff_params_mp = eff_params.mp
-eff_params_mn = eff_params.mn
-eff_params_fp = eff_params.fp
-eff_params_fn = eff_params.fn
-
-getP = (g, c) => (g === "Male") ? (c === "Positive" ? eff_params_mp : eff_params_mn) : (c === "Positive" ? eff_params_fp : eff_params_fn)
-
-transformPoint = (bx, by, p) => {
-  const nx = p.mean_x + p.std_x * bx;
-  const ny = p.mean_y + p.std_y * by;
-  return [nx, ny];
-}
-
-buildDataset = (count, startIndex) => {
-  const total_weight = eff_params_mn.weight + eff_params_mp.weight + eff_params_fn.weight + eff_params_fp.weight || 1;
-  
-  const n_male_neg = Math.floor(count * (eff_params_mn.weight / total_weight));
-  const n_male_pos = Math.floor(count * (eff_params_mp.weight / total_weight));
-  const n_female_neg = Math.floor(count * (eff_params_fn.weight / total_weight));
-  const n_female_pos = Math.max(0, count - n_male_neg - n_male_pos - n_female_neg);
-
-  let subset = [
-    ...male_neg_pool.slice(startIndex, startIndex + n_male_neg),
-    ...male_pos_pool.slice(startIndex, startIndex + n_male_pos),
-    ...female_neg_pool.slice(startIndex, startIndex + n_female_neg),
-    ...female_pos_pool.slice(startIndex, startIndex + n_female_pos)
-  ].map(d => ({...d, original_class: d.class, is_noise: false}));
-
-  // Apply instance-dependent Label Bias if selected
-  if (bias_type === "Label bias" && bias_amount > 0) {
-    const boundaryY = (eff_params_fp.mean_y + eff_params_fn.mean_y) / 2;
-    subset.forEach(d => {
-      const [nx, ny] = transformPoint(d.base_x, d.base_y, getP(d.group, d.original_class));
-      d.distToBoundary = Math.abs(ny - boundaryY);
-    });
-
-    const females = subset.filter(d => d.group === "Female");
-    females.sort((a, b) => a.distToBoundary - b.distToBoundary);
+  const dataset = [];
+  for (let i = 0; i < count; i++) {
+    // 1. Sensitive attribute S ~ Bernoulli(0.5)
+    // S = 0 (Privileged), S = 1 (Disadvantaged)
+    const S = randomUniform() < 0.5 ? 1 : 0;
     
-    const numToFlip = Math.floor(females.length * bias_amount * 0.8);
-    for (let i = 0; i < numToFlip; i++) {
-      females[i].class = females[i].original_class === "Positive" ? "Negative" : "Positive";
-      females[i].is_noise = true;
-    }
-  }
+    // 2. Base rate lookup
+    const p = (S === 1) ? disadvRate : privRate;
+    
+    // 3. True label logit and Y
+    // Logistic(0, 1) can be sampled as log(u / (1-u)) where u ~ U(0,1)
+    const u = randomUniform();
+    const logistic_noise = Math.log(u / (1 - u));
+    const Y_score = logit(p) + logistic_noise;
+    const Y = Y_score > 0 ? 1 : 0;
+    
+    // 4. Latent features X_y and X_s
+    // Random noise pre-sampled so it stays stable even if sigma is 0
+    const noise_y = randomNormal();
+    const noise_s = randomNormal();
+    const noise_task = randomNormal();
+    const noise_label = randomNormal();
 
-  return subset;
+    const X_y = Y + noise_y * feature_predictivity;
+    const X_s = S + noise_s * proxies;
+    
+    // 5. Task Difficulty (on disadvantaged X_y only)
+    const X_y_prime = X_y + (S === 1 ? noise_task * task_diff : 0);
+    const X_s_prime = X_s; // No noise added to X_s here
+    
+    // 6. Label Bias (on disadvantaged only)
+    let Y_score_prime = Y_score;
+    if (S === 1) {
+      Y_score_prime = Y_score - Math.abs(noise_label * label_bias);
+    }
+    const Y_prime = Y_score_prime > 0 ? 1 : 0;
+    
+    dataset.push({
+      id: `pt_${i}`,
+      S: S,
+      Y: Y,
+      Y_prime: Y_prime,
+      X_y_prime: X_y_prime,
+      X_s_prime: X_s_prime,
+      original_class: Y === 1 ? "Positive" : "Negative",
+      class: Y_prime === 1 ? "Positive" : "Negative",
+      group: S === 1 ? "Disadvantaged" : "Privileged"
+    });
+  }
+  return dataset;
 }
 ```
 
 ```{ojs}
 //| label: reactive-data
 // Train set
-active_data = buildDataset(total_samples, 0)
-// Validation set (fixed size 300)
-val_pool = buildDataset(300, 1000)
-// Test set (fixed size 500)
-test_pool = buildDataset(500, 1400)
+active_data = buildDataset(total_samples, 42)
+// Validation set (fixed size 1000)
+val_pool = buildDataset(1000, 100)
+// Test set (fixed size 1000)
+test_pool = buildDataset(1000, 200)
 ```
