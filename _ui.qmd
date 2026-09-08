@@ -86,8 +86,8 @@ layout = {
   return root;
 }
 
-viewof_feature_predictivity = Inputs.range([0, 5], {value: 0, step: 0.1, label: "Global Feature Predictivity (σ)"})
-viewof_proxies = Inputs.range([0, 5], {value: 0, step: 0.1, label: "Proxies / Separability (σ)"})
+viewof_feature_predictivity = Inputs.range([0, 1], {value: 0, step: 0.01, label: "Global Feature Predictivity (0=Base, 1=Perfect)"})
+viewof_proxies = Inputs.range([0, 1], {value: 0, step: 0.01, label: "Proxies / Separability (0=Base, 1=Perfect)"})
 viewof_task_diff = Inputs.range([0, 5], {value: 0, step: 0.1, label: "Task Difficulty (σ)"})
 viewof_label_bias = Inputs.range([0, 5], {value: 0, step: 0.1, label: "Label Bias (σ)"})
 
