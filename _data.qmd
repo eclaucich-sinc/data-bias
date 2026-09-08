@@ -44,14 +44,18 @@ buildDataset = (count, seed, isTrain = false) => {
     const X_s = S + noise_s * sigma_s;
     
     // 5. Task Difficulty (on disadvantaged X_y only)
-    const X_y_prime = X_y + (S === 1 ? noise_task * task_diff : 0);
+    // Map the [0,1] slider to a maximum sigma of 3.0
+    const sigma_task = task_diff * 3.0;
+    const X_y_prime = X_y + (S === 1 ? noise_task * sigma_task : 0);
     const X_s_prime = X_s; // No noise added to X_s here
     
     // 6. Label Bias (on disadvantaged only)
     let Y_score_prime = Y_score;
     // Label bias is injected only on the training set
+    // Map the [0,1] slider to a maximum sigma of 3.0
+    const sigma_label = label_bias * 3.0;
     if (S === 1 && isTrain) {
-      Y_score_prime = Y_score - Math.abs(noise_label * label_bias);
+      Y_score_prime = Y_score - Math.abs(noise_label * sigma_label);
     }
     const Y_prime = Y_score_prime > 0 ? 1 : 0;
     

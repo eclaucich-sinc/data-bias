@@ -50,36 +50,13 @@ layout = {
   const chartArea = document.createElement("div");
   chartArea.id = "chart-area";
   
-  // Legend overlay inside chartArea
-  const legendOverlay = document.createElement("div");
-  legendOverlay.style.position = "absolute";
-  legendOverlay.style.top = "1.5rem";
-  legendOverlay.style.right = "1.5rem";
-  legendOverlay.style.zIndex = "10";
-  legendOverlay.innerHTML = `
-    <div class="legend-card" style="padding: 0.75rem 1rem;">
-      <p class="sidebar-section-title" style="margin-bottom: 0.5rem;">Legend</p>
-      <div class="legend-grid">
-        <div class="legend-item">
-          <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#d62728"/></svg> Privileged Negative
-        </div>
-        <div class="legend-item">
-          <svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#1f77b4"/></svg> Privileged Positive
-        </div>
-        <div class="legend-item">
-          <svg width="12" height="12"><path d="M2,2 L10,10 M10,2 L2,10" stroke="#d62728" stroke-width="2.5"/></svg> Disadvantaged Negative
-        </div>
-        <div class="legend-item">
-          <svg width="12" height="12"><path d="M2,2 L10,10 M10,2 L2,10" stroke="#1f77b4" stroke-width="2.5"/></svg> Disadvantaged Positive
-        </div>
-      </div>
-    </div>
-  `;
+  const statsContainer = document.createElement("div");
+  statsContainer.id = "stats-container";
   
   const chartContainer = document.createElement("div");
   chartContainer.className = "chart-container"; chartContainer.id = "chart-container";
   
-  chartArea.append(legendOverlay, chartContainer);
+  chartArea.append(statsContainer, chartContainer);
 
   mainContent.append(chartArea);
   root.append(topBar, sidebar, mainContent);
@@ -88,8 +65,8 @@ layout = {
 
 viewof_feature_predictivity = Inputs.range([0, 1], {value: 0, step: 0.01, label: "Global Feature Predictivity (0=Base, 1=Perfect)"})
 viewof_proxies = Inputs.range([0, 1], {value: 0, step: 0.01, label: "Proxies / Separability (0=Base, 1=Perfect)"})
-viewof_task_diff = Inputs.range([0, 5], {value: 0, step: 0.1, label: "Task Difficulty (σ)"})
-viewof_label_bias = Inputs.range([0, 5], {value: 0, step: 0.1, label: "Label Bias (σ)"})
+viewof_task_diff = Inputs.range([0, 1], {value: 0, step: 0.01, label: "Task Difficulty (0=Base, 1=Max)"})
+viewof_label_bias = Inputs.range([0, 1], {value: 0, step: 0.01, label: "Label Bias (0=None, 1=Max)"})
 
 viewof_base_rate_diff = Inputs.select([
   "0.50 / 0.50",
@@ -109,4 +86,45 @@ task_diff = Generators.input(viewof_task_diff)
 label_bias = Generators.input(viewof_label_bias)
 base_rate_diff = Generators.input(viewof_base_rate_diff)
 total_samples = Generators.input(viewof_total_samples)
+```
+
+```{ojs}
+//| label: reactive-stats
+
+updateStats = {
+  const container = document.getElementById("stats-container");
+  if (!container) return;
+  
+  const total = active_data.length;
+  const priv = active_data.filter(d => d.group === "Privileged");
+  const disadv = active_data.filter(d => d.group === "Disadvantaged");
+  
+  const privPos = priv.filter(d => d.class === "Positive").length;
+  const privNeg = priv.filter(d => d.class === "Negative").length;
+  
+  const disadvPos = disadv.filter(d => d.class === "Positive").length;
+  const disadvNeg = disadv.filter(d => d.class === "Negative").length;
+  
+  const flipped = disadv.filter(d => d.original_class === "Positive" && d.class === "Negative").length;
+
+  const privPosPct = priv.length > 0 ? Math.round(privPos/priv.length*100) : 0;
+  const privNegPct = priv.length > 0 ? Math.round(privNeg/priv.length*100) : 0;
+  const disadvPosPct = disadv.length > 0 ? Math.round(disadvPos/disadv.length*100) : 0;
+  const disadvNegPct = disadv.length > 0 ? Math.round(disadvNeg/disadv.length*100) : 0;
+
+  container.innerHTML = `
+    <div style="display: flex; justify-content: space-around; font-size: 13px; color: #e2e8f0; line-height: 1.5; background: rgba(30, 41, 59, 0.5); padding: 12px 20px; border-radius: 8px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);">
+      <div>
+        <strong style="color: #60a5fa">Privileged Group (Circles):</strong> ${priv.length} (${Math.round(priv.length/total*100)}%)<br/>
+        - <svg width="10" height="10" style="display:inline-block; vertical-align:middle; margin-right:3px"><circle cx="5" cy="5" r="4.5" fill="#1f77b4"/></svg> Positive: ${privPos} (${privPosPct}%)<br/>
+        - <svg width="10" height="10" style="display:inline-block; vertical-align:middle; margin-right:3px"><circle cx="5" cy="5" r="4.5" fill="#d62728"/></svg> Negative: ${privNeg} (${privNegPct}%)
+      </div>
+      <div>
+        <strong style="color: #f87171">Disadvantaged Group (Crosses):</strong> ${disadv.length} (${Math.round(disadv.length/total*100)}%)<br/>
+        - <svg width="10" height="10" style="display:inline-block; vertical-align:middle; margin-right:3px"><path d="M1,1 L9,9 M9,1 L1,9" stroke="#1f77b4" stroke-width="2"/></svg> Positive: ${disadvPos} (${disadvPosPct}%)<br/>
+        - <svg width="10" height="10" style="display:inline-block; vertical-align:middle; margin-right:3px"><path d="M1,1 L9,9 M9,1 L1,9" stroke="#d62728" stroke-width="2"/></svg> Negative: ${disadvNeg} (${disadvNegPct}%)
+      </div>
+    </div>
+  `;
+}
 ```
