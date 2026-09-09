@@ -10,7 +10,11 @@ buildDataset = (count, seed, isTrain = false) => {
   const randomUniform = d3.randomUniform.source(lcg)(0, 1);
 
   // Parse base rates from dropdown (e.g. "0.25 / 0.50")
-  const [privRate, disadvRate] = base_rate_diff.split("/").map(Number);
+  let [privRate, disadvRate] = base_rate_diff.split("/").map(Number);
+  if (!isTrain) {
+    privRate = 0.5;
+    disadvRate = 0.5;
+  }
   
   const dataset = [];
   for (let i = 0; i < count; i++) {

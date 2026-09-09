@@ -46,17 +46,51 @@ layout = {
   const mainContent = document.createElement("div");
   mainContent.id = "main-content";
 
-  // Plot Area
   const chartArea = document.createElement("div");
   chartArea.id = "chart-area";
+  chartArea.style.display = "flex";
+  chartArea.style.flexDirection = "column";
+  chartArea.style.gap = "1rem";
+  chartArea.style.width = "100%";
   
   const statsContainer = document.createElement("div");
   statsContainer.id = "stats-container";
   
-  const chartContainer = document.createElement("div");
-  chartContainer.className = "chart-container"; chartContainer.id = "chart-container";
+  const chartsWrapper = document.createElement("div");
+  chartsWrapper.style.display = "flex";
+  chartsWrapper.style.gap = "1.5rem";
+  chartsWrapper.style.flexWrap = "wrap";
   
-  chartArea.append(statsContainer, chartContainer);
+  // Train Chart
+  const trainChartWrapper = document.createElement("div");
+  const trainLabel = document.createElement("h3");
+  trainLabel.textContent = "Train Set (Biased)";
+  trainLabel.style.color = "#cbd5e1";
+  trainLabel.style.margin = "0 0 0.5rem 0";
+  const trainChartContainer = document.createElement("div");
+  trainChartContainer.className = "chart-container"; 
+  trainChartContainer.id = "chart-container";
+  trainChartWrapper.append(trainLabel, trainChartContainer);
+  
+  // Test Chart & Metrics
+  const testChartWrapper = document.createElement("div");
+  const testLabel = document.createElement("h3");
+  testLabel.textContent = "Test Set (Clean & Balanced)";
+  testLabel.style.color = "#cbd5e1";
+  testLabel.style.margin = "0 0 0.5rem 0";
+  const testChartContainer = document.createElement("div");
+  testChartContainer.className = "chart-container"; 
+  testChartContainer.id = "chart-container-test";
+  
+  const evalMetricsContainer = document.createElement("div");
+  evalMetricsContainer.id = "eval-metrics-container";
+  evalMetricsContainer.style.marginTop = "1rem";
+  
+  testChartWrapper.append(testLabel, testChartContainer, evalMetricsContainer);
+  
+  chartsWrapper.append(trainChartWrapper, testChartWrapper);
+  
+  chartArea.append(statsContainer, chartsWrapper);
 
   mainContent.append(chartArea);
   root.append(topBar, sidebar, mainContent);

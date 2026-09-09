@@ -10,7 +10,6 @@ chart = {
 
   // Color map
   const getColor = d => d.class === "Positive" ? "#1f77b4" : "#d62728";
-  const getTestColor = d => d.original_class === "Positive" ? "#1f77b4" : "#d62728";
 
   const symbolGenerator = d3.symbol();
 
@@ -20,106 +19,136 @@ chart = {
   };
 
   // Scales (Expanded to [-8, 8] to fit noise)
-  const xScale = d3.scaleLinear().domain([-8, 8]).range([0, innerW]);
-  const yScale = d3.scaleLinear().domain([-8, 8]).range([innerH, 0]);
+  const xScale = d3.scaleLinear().domain([-4, 4]).range([0, innerW]);
+  const yScale = d3.scaleLinear().domain([-4, 4]).range([innerH, 0]);
+  
+  const drawChart = (containerId, data, lrWeights) => {
+    let svg = d3.select(`#${containerId} svg`);
+    if (svg.empty()) {
+      svg = d3.select(`#${containerId}`).append("svg").attr("width", W).attr("height", H).style("display", "block");
+    } else {
+      svg.attr("width", W).attr("height", H);
+    }
 
-  // ── Training Chart ──────────────────────────────────────────────────────────
-  let svg = d3.select("#chart-container svg");
-  if (svg.empty()) {
-    svg = d3.select("#chart-container").append("svg").attr("width", W).attr("height", H).style("display", "block");
-  } else {
-    svg.attr("width", W).attr("height", H);
-  }
+    let defs = svg.select("defs");
+    if (defs.empty()) defs = svg.append("defs");
+    let clip = defs.select("clipPath");
+    if (clip.empty()) {
+      clip = defs.append("clipPath").attr("id", `${containerId}-clip`);
+      clip.append("rect");
+    }
+    clip.select("rect").attr("width", innerW).attr("height", innerH);
 
-  let defs = svg.select("defs");
-  if (defs.empty()) defs = svg.append("defs");
-  let clip = defs.select("#main-clip");
-  if (clip.empty()) {
-    clip = defs.append("clipPath").attr("id", "main-clip");
-    clip.append("rect");
-  }
-  clip.select("rect").attr("width", innerW).attr("height", innerH);
+    let g = svg.select("g.inner");
+    if (g.empty()) {
+      g = svg.append("g").attr("class", "inner").attr("transform", `translate(${margin.left},${margin.top})`);
+    }
 
-  let g = svg.select("g.inner");
-  if (g.empty()) {
-    g = svg.append("g").attr("class", "inner").attr("transform", `translate(${margin.left},${margin.top})`);
-  }
+    let plotArea = g.select(".plot-area");
+    if (plotArea.empty()) {
+      plotArea = g.append("g").attr("class", "plot-area").attr("clip-path", `url(#${containerId}-clip)`);
+    }
 
-  let plotArea = g.select(".plot-area");
-  if (plotArea.empty()) {
-    plotArea = g.append("g").attr("class", "plot-area").attr("clip-path", "url(#main-clip)");
-  }
+    // Grid lines
+    let gridGroup = g.select(".grid");
+    if (gridGroup.empty()) gridGroup = g.append("g").attr("class", "grid");
+    gridGroup.selectAll(".grid-h").data(yScale.ticks(6)).join("line").attr("class","grid-h")
+      .attr("x1", 0).attr("x2", innerW).attr("y1", d => yScale(d)).attr("y2", d => yScale(d))
+      .attr("stroke", "rgba(255,255,255,0.05)").attr("stroke-width", 1);
+    gridGroup.selectAll(".grid-v").data(xScale.ticks(6)).join("line").attr("class","grid-v")
+      .attr("x1", d => xScale(d)).attr("x2", d => xScale(d)).attr("y1", 0).attr("y2", innerH)
+      .attr("stroke", "rgba(255,255,255,0.05)").attr("stroke-width", 1);
 
-  // Grid lines
-  let gridGroup = g.select(".grid");
-  if (gridGroup.empty()) gridGroup = g.append("g").attr("class", "grid");
-  gridGroup.selectAll(".grid-h").data(yScale.ticks(6)).join("line").attr("class","grid-h")
-    .attr("x1", 0).attr("x2", innerW).attr("y1", d => yScale(d)).attr("y2", d => yScale(d))
-    .attr("stroke", "rgba(255,255,255,0.05)").attr("stroke-width", 1);
-  gridGroup.selectAll(".grid-v").data(xScale.ticks(6)).join("line").attr("class","grid-v")
-    .attr("x1", d => xScale(d)).attr("x2", d => xScale(d)).attr("y1", 0).attr("y2", innerH)
-    .attr("stroke", "rgba(255,255,255,0.05)").attr("stroke-width", 1);
+    // Axes
+    let xAxisG = g.select(".x-axis");
+    if (xAxisG.empty()) xAxisG = g.append("g").attr("class","x-axis");
+    xAxisG.attr("transform", `translate(0,${innerH})`).call(d3.axisBottom(xScale).ticks(6).tickSize(4))
+      .call(ax => {
+        ax.select(".domain").attr("stroke","rgba(255,255,255,0.15)");
+        ax.selectAll("text").attr("fill","#64748b").attr("font-size","11px").attr("font-family","Inter,sans-serif");
+        ax.selectAll(".tick line").attr("stroke","rgba(255,255,255,0.1)");
+      });
 
-  // Axes
-  let xAxisG = g.select(".x-axis");
-  if (xAxisG.empty()) xAxisG = g.append("g").attr("class","x-axis");
-  xAxisG.attr("transform", `translate(0,${innerH})`).call(d3.axisBottom(xScale).ticks(6).tickSize(4))
-    .call(ax => {
-      ax.select(".domain").attr("stroke","rgba(255,255,255,0.15)");
-      ax.selectAll("text").attr("fill","#64748b").attr("font-size","11px").attr("font-family","Inter,sans-serif");
-      ax.selectAll(".tick line").attr("stroke","rgba(255,255,255,0.1)");
-    });
+    let yAxisG = g.select(".y-axis");
+    if (yAxisG.empty()) yAxisG = g.append("g").attr("class","y-axis");
+    yAxisG.call(d3.axisLeft(yScale).ticks(6).tickSize(4))
+      .call(ax => {
+        ax.select(".domain").attr("stroke","rgba(255,255,255,0.15)");
+        ax.selectAll("text").attr("fill","#64748b").attr("font-size","11px").attr("font-family","Inter,sans-serif");
+        ax.selectAll(".tick line").attr("stroke","rgba(255,255,255,0.1)");
+      });
 
-  let yAxisG = g.select(".y-axis");
-  if (yAxisG.empty()) yAxisG = g.append("g").attr("class","y-axis");
-  yAxisG.call(d3.axisLeft(yScale).ticks(6).tickSize(4))
-    .call(ax => {
-      ax.select(".domain").attr("stroke","rgba(255,255,255,0.15)");
-      ax.selectAll("text").attr("fill","#64748b").attr("font-size","11px").attr("font-family","Inter,sans-serif");
-      ax.selectAll(".tick line").attr("stroke","rgba(255,255,255,0.1)");
-    });
+    // Axis labels
+    let xLabel = g.select(".x-label");
+    if (xLabel.empty()) {
+      g.append("text").attr("class","x-label")
+        .attr("x", innerW / 2).attr("y", innerH + 40)
+        .attr("text-anchor","middle").attr("fill","#475569")
+        .attr("font-size","11px").attr("font-family","Inter,sans-serif")
+        .text("Feature X  (Group Disparity axis)");
+    }
+    let yLabel = g.select(".y-label");
+    if (yLabel.empty()) {
+      g.append("text").attr("class","y-label")
+        .attr("transform","rotate(-90)")
+        .attr("x", -innerH / 2).attr("y", -40)
+        .attr("text-anchor","middle").attr("fill","#475569")
+        .attr("font-size","11px").attr("font-family","Inter,sans-serif")
+        .text("Feature Y  (Class Separation axis)");
+    }
 
-  // Axis labels
-  let xLabel = g.select(".x-label");
-  if (xLabel.empty()) {
-    g.append("text").attr("class","x-label")
-      .attr("x", innerW / 2).attr("y", innerH + 40)
-      .attr("text-anchor","middle").attr("fill","#475569")
-      .attr("font-size","11px").attr("font-family","Inter,sans-serif")
-      .text("Feature X  (Group Disparity axis)");
-  }
-  let yLabel = g.select(".y-label");
-  if (yLabel.empty()) {
-    g.append("text").attr("class","y-label")
-      .attr("transform","rotate(-90)")
-      .attr("x", -innerH / 2).attr("y", -40)
-      .attr("text-anchor","middle").attr("fill","#475569")
-      .attr("font-size","11px").attr("font-family","Inter,sans-serif")
-      .text("Feature Y  (Class Separation axis)");
-  }
+    // Decision Boundary Line
+    // Line eq: w0 + w1*X + w2*Y = 0 => Y = (-w0 - w1*X) / w2
+    if (lrWeights && Math.abs(lrWeights.w2) > 1e-5) {
+      const {w0, w1, w2} = lrWeights;
+      const getLineY = (x) => (-w0 - w1 * x) / w2;
+      const lineData = [
+        [xScale(-10), yScale(getLineY(-10))],
+        [xScale(10), yScale(getLineY(10))]
+      ];
+      
+      let db = plotArea.selectAll("path.decision-boundary").data([lineData]);
+      db.join(
+        enter => enter.append("path")
+          .attr("class", "decision-boundary")
+          .attr("d", d3.line())
+          .attr("stroke", "#10b981") // emerald color
+          .attr("stroke-width", 2)
+          .attr("stroke-dasharray", "4,4")
+          .attr("fill", "none"),
+        update => update
+          .attr("d", d3.line())
+      );
+    } else {
+      plotArea.selectAll("path.decision-boundary").remove();
+    }
 
-  // Points
-  const getX = d => xScale(d.X_s_prime);
-  const getY = d => yScale(d.X_y_prime);
+    // Points
+    const getX = d => xScale(d.X_s_prime);
+    const getY = d => yScale(d.X_y_prime);
 
-  plotArea.selectAll("path.point")
-    .data(active_data, d => d.id)
-    .join(
-      enter => enter.append("path")
-        .attr("class", "point")
-        .attr("transform", d => `translate(${getX(d)},${getY(d)})`)
-        .attr("d", d => getPath(d, 0))
-        .attr("fill", getColor).attr("opacity", 0)
-        .call(e => e.transition().duration(450)
-          .attr("d", d => getPath(d, 60)).attr("opacity", 0.72)),
-      update => update.call(u => u.transition().duration(450)
-        .attr("transform", d => `translate(${getX(d)},${getY(d)})`)
-        .attr("d", d => getPath(d, 60))
-        .attr("fill", getColor).attr("opacity", 0.72)),
-      exit => exit.call(x => x.transition().duration(280)
-        .attr("d", d => getPath(d, 0)).attr("opacity", 0).remove())
-    );
-
+    plotArea.selectAll("path.point")
+      .data(data, d => d.id)
+      .join(
+        enter => enter.append("path")
+          .attr("class", "point")
+          .attr("transform", d => `translate(${getX(d)},${getY(d)})`)
+          .attr("d", d => getPath(d, 0))
+          .attr("fill", getColor).attr("opacity", 0)
+          .call(e => e.transition().duration(450)
+            .attr("d", d => getPath(d, 40)).attr("opacity", 0.72)),
+        update => update.call(u => u.transition().duration(450)
+          .attr("transform", d => `translate(${getX(d)},${getY(d)})`)
+          .attr("d", d => getPath(d, 40))
+          .attr("fill", getColor).attr("opacity", 0.72)),
+        exit => exit.call(x => x.transition().duration(280)
+          .attr("d", d => getPath(d, 0)).attr("opacity", 0).remove())
+      );
+  };
+  
+  // Render both charts
+  drawChart("chart-container", active_data, lr_model);
+  drawChart("chart-container-test", test_pool, lr_model);
 
   return null;
 }
