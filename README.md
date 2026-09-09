@@ -48,16 +48,13 @@ $$ AUC = \Phi\left( \frac{1 - 0}{\sigma \sqrt{2}} \right) = \Phi\left( \frac{1}{
 We designed the sliders so that a setting of `0` represents a **Realistic Baseline** (no extra bias injected). To find the exact $\sigma$ required for these baselines, we work the AUC formula backward using the inverse CDF ($\Phi^{-1}$):
 
 1. **Set the Target AUC:**  
-  
-   $$ \text{AUC}_{Target} = \Phi\left( \frac{1}{\sigma \sqrt{2}} \right) $$  
+$$ \text{AUC}_{Target} = \Phi\left( \frac{1}{\sigma \sqrt{2}} \right) $$  
 
 2. **Apply the Inverse CDF:**  
- 
-   $$ \Phi^{-1}(\text{AUC}_{Target}) = \frac{1}{\sigma \sqrt{2}} $$  
+$$ \Phi^{-1}(\text{AUC}_{Target}) = \frac{1}{\sigma \sqrt{2}} $$  
 
-3. **Solve for $\sigma$:**  
-
-   $$ \sigma = \frac{1}{\Phi^{-1}(\text{AUC}_{Target}) \cdot \sqrt{2}} $$  
+3. **Solve for $\sigma$:** 
+$$\sigma = \frac{1}{\Phi^{-1}(\text{AUC}_{Target}) \cdot \sqrt{2}}$$  
    
 
 Using this logic:
