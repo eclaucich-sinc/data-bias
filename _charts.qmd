@@ -18,7 +18,7 @@ chart = {
     return symbolGenerator();
   };
 
-  // Scales (Expanded to [-8, 8] to fit noise)
+  // Scales
   const xScale = d3.scaleLinear().domain([-4, 4]).range([0, innerW]);
   const yScale = d3.scaleLinear().domain([-4, 4]).range([innerH, 0]);
   
@@ -112,7 +112,7 @@ chart = {
         enter => enter.append("path")
           .attr("class", "decision-boundary")
           .attr("d", d3.line())
-          .attr("stroke", "#10b981") // emerald color
+          .attr("stroke", "#10b981")
           .attr("stroke-width", 2)
           .attr("stroke-dasharray", "4,4")
           .attr("fill", "none"),

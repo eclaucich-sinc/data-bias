@@ -3,14 +3,21 @@
 
 logit = p => Math.log(p / (1 - p));
 
-buildDataset = (count, seed, isTrain = false) => {
+buildDataset = (count, seed, isTrain = false, overrideConfig = null) => {
   // Use a seeded PRNG so that slider adjustments don't cause the entire dataset to jump randomly
   const lcg = d3.randomLcg(seed);
   const randomNormal = d3.randomNormal.source(lcg)(0, 1);
   const randomUniform = d3.randomUniform.source(lcg)(0, 1);
 
+  // Configuration values (override vs global slider)
+  const conf_fp = overrideConfig && overrideConfig.feature_predictivity !== undefined ? overrideConfig.feature_predictivity : feature_predictivity;
+  const conf_px = overrideConfig && overrideConfig.proxies !== undefined ? overrideConfig.proxies : proxies;
+  const conf_td = overrideConfig && overrideConfig.task_diff !== undefined ? overrideConfig.task_diff : task_diff;
+  const conf_lb = overrideConfig && overrideConfig.label_bias !== undefined ? overrideConfig.label_bias : label_bias;
+  const conf_br = overrideConfig && overrideConfig.base_rate_diff !== undefined ? overrideConfig.base_rate_diff : base_rate_diff;
+
   // Parse base rates from dropdown (e.g. "0.25 / 0.50")
-  let [privRate, disadvRate] = base_rate_diff.split("/").map(Number);
+  let [privRate, disadvRate] = conf_br.split("/").map(Number);
   if (!isTrain) {
     privRate = 0.5;
     disadvRate = 0.5;
@@ -39,25 +46,30 @@ buildDataset = (count, seed, isTrain = false) => {
     const noise_task = randomNormal();
     const noise_label = randomNormal();
 
-    // Convert strength sliders [0, 1] to actual noise standard deviations (sigma)
-    // 0 = Realistic Baseline (high noise). 1 = Perfect Signal (0 noise).
-    const sigma_y = 0.5518 * (1 - feature_predictivity);
-    const sigma_s = 0.6823 * (1 - proxies);
+    // Convert sliders [0, 1] to actual noise standard deviations (sigma)
+    // 0 = Realistic Baseline (No additional bias injected) -> target AUCs
+    // 1 = Full Bias Injected
+    
+    // For Feature Predictivity: "Full Bias" means features are extremely noisy
+    const sigma_y = 0.5518 + conf_fp * (2.7911 - 0.5518);
+    
+    // For Proxies: "Full Bias" means proxies perfectly separate the groups (sigma_s decreases to 0)
+    const sigma_s = 0.6823 * (1 - conf_px);
 
     const X_y = Y + noise_y * sigma_y;
     const X_s = S + noise_s * sigma_s;
     
     // 5. Task Difficulty (on disadvantaged X_y only)
-    // Map the [0,1] slider to a maximum sigma of 3.0
-    const sigma_task = task_diff * 3.0;
+    // Map the [0,1] slider to a maximum sigma of 2.7911
+    const sigma_task = conf_td * 2.7911;
     const X_y_prime = X_y + (S === 1 ? noise_task * sigma_task : 0);
     const X_s_prime = X_s; // No noise added to X_s here
     
     // 6. Label Bias (on disadvantaged only)
     let Y_score_prime = Y_score;
     // Label bias is injected only on the training set
-    // Map the [0,1] slider to a maximum sigma of 3.0
-    const sigma_label = label_bias * 3.0;
+    // Map the [0,1] slider to a maximum sigma of 2.7911
+    const sigma_label = conf_lb * 2.7911;
     if (S === 1 && isTrain) {
       Y_score_prime = Y_score - Math.abs(noise_label * sigma_label);
     }
@@ -83,8 +95,8 @@ buildDataset = (count, seed, isTrain = false) => {
 //| label: reactive-data
 // Train set
 active_data = buildDataset(total_samples, 42, true)
-// Validation set (fixed size 1000)
+// Validation set
 val_pool = buildDataset(1000, 100, false)
-// Test set (fixed size 1000)
+// Test set
 test_pool = buildDataset(1000, 200, false)
 ```

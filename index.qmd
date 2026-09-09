@@ -8,8 +8,16 @@ execute:
   echo: false
 ---
 
-
 {{< include _data.qmd >}}
+{{< include _model.qmd >}}
+
+::: {.panel-tabset}
+## Single Simulation
+
 {{< include _ui.qmd >}}
 {{< include _charts.qmd >}}
-{{< include _model.qmd >}}
+
+## Parameter Sweep
+
+{{< include _sweep.qmd >}}
+:::

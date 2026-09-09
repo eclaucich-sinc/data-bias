@@ -1,0 +1,90 @@
+```{ojs}
+//| label: sweep-ui
+
+viewof sweep_mechanism = Inputs.select([
+  "Label Bias",
+  "Task Difficulty", 
+  "Feature Predictivity",
+  "Proxies",
+  "Base Rate Difference"
+], {label: "Mechanism to Sweep", value: "Label Bias"})
+
+sweep_mechanism_val = Generators.input(viewof sweep_mechanism)
+
+viewof sweep_dataset_size = Inputs.range([1000, 10000], {value: 5000, step: 1000, label: "Sweep Dataset Size"})
+sweep_dataset_size_val = Generators.input(viewof sweep_dataset_size)
+
+viewof run_sweep_btn = Inputs.button("Run Sweep")
+run_sweep_trigger = Generators.input(viewof run_sweep_btn)
+```
+
+```{ojs}
+//| label: sweep-logic
+sweep_results = {
+  run_sweep_trigger;
+  
+  let results = [];
+  
+  // Clean configuration
+  const baselineConfig = {
+    feature_predictivity: 0,
+    proxies: 0,
+    task_diff: 0,
+    label_bias: 0,
+    base_rate_diff: "0.50 / 0.50"
+  };
+
+  const steps = sweep_mechanism_val === "Base Rate Difference" 
+    ? ["0.25 / 0.50", "0.25 / 0.75", "0.50 / 0.25", "0.50 / 0.50", "0.50 / 0.75", "0.75 / 0.25", "0.75 / 0.50"]
+    : d3.range(0, 1.1, 0.1);
+
+  for (let val of steps) {
+    let overrideConfig = { ...baselineConfig };
+    
+    // Apply sweep value
+    if (sweep_mechanism_val === "Label Bias") overrideConfig.label_bias = val;
+    if (sweep_mechanism_val === "Task Difficulty") overrideConfig.task_diff = val;
+    if (sweep_mechanism_val === "Feature Predictivity") overrideConfig.feature_predictivity = val;
+    if (sweep_mechanism_val === "Proxies") overrideConfig.proxies = val;
+    if (sweep_mechanism_val === "Base Rate Difference") overrideConfig.base_rate_diff = val;
+
+    // Build Train Data
+    const trainData = buildDataset(sweep_dataset_size_val, 42, true, overrideConfig);
+    
+    // Train Model
+    const weights = trainLR(trainData, 500, 0.5);
+    
+    // Build Test Data
+    const testData = buildDataset(1000, 200, false, overrideConfig);
+    
+    // Evaluate
+    const metrics = evaluateModel(testData, weights);
+    
+    let x_val = val;
+
+    results.push({ x: x_val, metric: "TPR Gap", value: metrics.tpr_gap });
+    results.push({ x: x_val, metric: "Balanced Accuracy Gap", value: metrics.bal_acc_gap });
+    results.push({ x: x_val, metric: "AUC Gap", value: metrics.auc_gap });
+    results.push({ x: x_val, metric: "Statistical Parity Diff", value: metrics.sp_diff });
+  }
+  
+  return results;
+}
+```
+
+```{ojs}
+//| label: sweep-plots-render
+html`<div style="display: flex; justify-content: center; padding: 20px; background: #0f172a; border-radius: 8px;">
+  ${Plot.plot({
+    title: "Fairness Metrics vs " + sweep_mechanism_val,
+    x: { label: sweep_mechanism_val, type: sweep_mechanism_val === "Base Rate Difference" ? "point" : "linear", grid: true },
+    y: { label: "Absolute Gap", domain: [0, 1], tickFormat: "%", grid: true },
+    color: { legend: true, domain: ["TPR Gap", "Balanced Accuracy Gap", "AUC Gap", "Statistical Parity Diff"], range: ["#3b82f6", "#10b981", "#f59e0b", "#ef4444"] },
+    marks: [ 
+      Plot.line(sweep_results, {x: "x", y: "value", stroke: "metric", strokeWidth: 3}), 
+      Plot.dot(sweep_results, {x: "x", y: "value", fill: "metric", r: 5}) 
+    ],
+    width: 800, height: 450, style: { background: "#1e293b", color: "#e2e8f0", fontSize: "16px" }
+  })}
+</div>`
+```
